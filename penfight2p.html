@@ -1,0 +1,1230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flick It!</title>
+<link href="https://fonts.googleapis.com/css2?family=Pangolin&display=swap" rel="stylesheet">
+<style>
+  * { margin:0;padding:0;box-sizing:border-box; }
+  body { background:#222; overflow:hidden; font-family:'Pangolin',cursive; }
+  canvas { display:block; }
+
+  #menu {
+    position:fixed;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    background:rgba(20,20,20,0.96);z-index:30;
+  }
+  #menu h1 { font-size:52px;font-weight:900;color:#eee;letter-spacing:6px;margin-bottom:6px; }
+  #menu .sub { color:#888;font-size:14px;margin-bottom:10px; }
+  #menu .inst { color:#aaa;font-size:13px;margin-bottom:38px;text-align:center;line-height:2;max-width:320px; }
+  .mode-row { display:flex;gap:18px;margin:18px 0 24px; }
+  .mode-card {
+    width:180px;padding:18px 16px;border-radius:8px;cursor:pointer;
+    background:rgba(255,255,255,0.05);border:2px solid rgba(255,255,255,0.1);
+    color:#ddd;text-align:center;transition:transform 0.15s,border-color 0.15s,background 0.15s;
+  }
+  .mode-card:hover { transform:translateY(-3px);background:rgba(255,255,255,0.09); }
+  .mode-card.selected { border-color:#c0392b;background:rgba(192,57,43,0.18); }
+  .mode-name { font-size:20px;font-weight:900;letter-spacing:2px;margin-bottom:7px; }
+  .mode-desc { font-size:12px;color:#aaa;line-height:1.5; }
+  #menu button,
+  #classicSetup button,
+  #resetBtn,
+  #winScreen button {
+    font-family:'Pangolin',cursive;
+    background:#c0392b;color:#fff;border:none;border-radius:50px;
+    cursor:pointer;letter-spacing:2px;text-align:center;
+    box-shadow:0 4px 20px rgba(192,57,43,0.5);
+    transition:transform 0.15s,background 0.15s;
+  }
+  #menu button { padding:13px 50px;font-size:17px;font-weight:800; }
+  #menu button:hover { transform:scale(1.06);background:#d04435; }
+
+  #classicSetup {
+    position:fixed;inset:0;display:none;flex-direction:column;
+    align-items:center;justify-content:center;background:rgba(14,14,18,0.97);z-index:35;
+  }
+  #classicSetup h2 { color:#eee;font-size:30px;letter-spacing:3px;margin-bottom:6px; }
+  #classicSetup .setup-sub { color:#888;font-size:13px;margin-bottom:18px; }
+  #classicPlayers { width:min(560px,92vw);max-height:52vh;overflow:auto;padding-right:4px; }
+  .classic-player-row {
+    display:grid;grid-template-columns:minmax(130px,1fr) auto;gap:10px;align-items:center;
+    background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);
+    border-radius:8px;padding:10px 12px;margin-bottom:9px;
+  }
+  .classic-player-row input {
+    width:100%;padding:9px 12px;border-radius:8px;outline:none;
+    font-family:'Pangolin',cursive;font-size:15px;color:#eee;
+    background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);
+  }
+  .color-swatches { display:flex;gap:7px;align-items:center; }
+  .swatch {
+    width:27px;height:27px;border-radius:50%;cursor:pointer;
+    border:2px solid transparent;transition:transform 0.12s,border-color 0.12s;
+  }
+  .swatch:hover { transform:scale(1.16); }
+  .swatch.picked { border-color:#fff;transform:scale(1.1); }
+  .remove-player {
+    width:27px;height:27px;padding:0;font-size:15px;box-shadow:none;border-radius:50%;
+    letter-spacing:0;background:rgba(255,255,255,0.08);color:#ddd;
+  }
+  #classicSetup .setup-actions { display:flex;gap:12px;margin-top:18px;align-items:center; }
+  #classicSetup button { padding:10px 24px;font-size:14px;font-weight:800;box-shadow:0 4px 16px rgba(192,57,43,0.35); }
+  #classicSetup .soft-btn { background:rgba(255,255,255,0.09);box-shadow:none;color:#ddd; }
+  #classicSetup button:hover { transform:scale(1.04);background:#d04435; }
+  #classicSetup .soft-btn:hover { background:rgba(255,255,255,0.16); }
+
+  #hud {
+    position:fixed;top:0;left:0;right:0;height:64px;
+    display:none;align-items:center;justify-content:space-between;
+    padding:0 24px;z-index:20;pointer-events:none;
+  }
+  .score-panel {
+    display:flex;align-items:center;gap:12px;
+    background:rgba(0,0,0,0.45);border-radius:12px;
+    padding:8px 20px;border:2px solid transparent;
+    transition:border-color 0.3s,box-shadow 0.3s;
+  }
+  .score-panel.active-panel {
+    border-color:currentColor;
+    box-shadow:0 0 18px -4px currentColor;
+  }
+  .score-dot  { width:14px;height:14px;border-radius:50%; }
+  .score-name { font-size:13px;font-weight:700;letter-spacing:1px; }
+  .score-num  { font-size:28px;font-weight:900; }
+
+  #turnBanner {
+    display:flex;align-items:center;gap:10px;
+    background:rgba(0,0,0,0.5);border-radius:10px;padding:8px 20px;
+  }
+  #turnDot  { width:16px;height:16px;border-radius:50%;transition:background 0.3s; }
+  #turnText { font-size:13px;font-weight:700;color:#eee;letter-spacing:1px; }
+
+  #resetBtn {
+    position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+    padding:8px 28px;font-size:13px;font-weight:700;
+    display:none;z-index:20;pointer-events:all;
+  }
+  #resetBtn:hover { transform:translateX(-50%) scale(1.06);background:#d04435; }
+
+  #cubeOption {
+    position:fixed;top:76px;right:24px;display:none;align-items:center;gap:9px;
+    padding:8px 13px;border-radius:10px;background:rgba(0,0,0,0.48);
+    color:#eee;font-size:13px;font-weight:700;letter-spacing:1px;z-index:22;
+    border:1px solid rgba(255,255,255,0.14);pointer-events:all;
+  }
+  #cubeOption input { width:16px;height:16px;accent-color:#c0392b;cursor:pointer; }
+
+  #playerSidebar {
+    position:fixed;right:0;top:64px;bottom:0;width:198px;display:none;
+    background:rgba(0,0,0,0.55);border-left:1px solid rgba(255,255,255,0.08);
+    padding:14px 10px;z-index:18;overflow:auto;
+  }
+  #playerSidebar h3 {
+    color:#888;font-size:11px;letter-spacing:2px;text-align:center;
+    text-transform:uppercase;margin-bottom:12px;
+  }
+  .player-list-row {
+    display:flex;align-items:center;gap:8px;padding:8px 9px;margin-bottom:7px;
+    border-radius:8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);
+    transition:opacity 0.25s,filter 0.25s,background 0.25s,border-color 0.25s;
+  }
+  .player-list-row.active { background:rgba(255,255,255,0.12);border-color:rgba(255,255,255,0.24); }
+  .player-list-row.eliminated { opacity:0.35;filter:grayscale(1); }
+  .player-dot { width:11px;height:11px;border-radius:50%;flex-shrink:0; }
+  .player-name { flex:1;color:#ddd;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+  .player-count { color:#aaa;font-size:12px; }
+
+  #winScreen {
+    position:fixed;inset:0;display:none;
+    flex-direction:column;align-items:center;justify-content:center;
+    background:rgba(10,10,10,0.92);z-index:40;
+  }
+  #winScreen h2 { font-size:44px;font-weight:900;color:#eee;margin-bottom:10px; }
+  #winScreen p  { font-size:17px;color:#aaa;margin-bottom:32px; }
+  #winScreen button { padding:12px 44px;font-size:16px;font-weight:800; }
+  #winScreen button:hover { transform:scale(1.06);background:#d04435; }
+</style>
+</head>
+<body>
+
+<div id="menu">
+  <h1>FLICK IT!</h1>
+  <div class="sub">Choose Game Mode</div>
+  <div class="inst">
+    Battle uses mixed pen weights.<br>
+    Classic uses equal pen 3 colours for everyone.
+  </div>
+  <div class="mode-row">
+    <div class="mode-card selected" id="modeBattle" onclick="selectMode('battle')">
+      <div class="mode-name">BATTLE</div>
+      <div class="mode-desc">Black vs Blue<br>different pen weights</div>
+    </div>
+    <div class="mode-card" id="modeClassic" onclick="selectMode('classic')">
+      <div class="mode-name">CLASSIC</div>
+      <div class="mode-desc">2-5 players<br>same pen, different colours</div>
+    </div>
+  </div>
+  <button onclick="handlePlay()">PLAY</button>
+</div>
+
+<div id="classicSetup">
+  <h2>CLASSIC SETUP</h2>
+  <div class="setup-sub">Enter each player name and choose a colour</div>
+  <div id="classicPlayers"></div>
+  <div class="setup-actions">
+    <button class="soft-btn" onclick="addClassicPlayer()">Add Player</button>
+    <button class="soft-btn" onclick="backToMenu()">Back</button>
+    <button onclick="startClassicGame()">Start Classic</button>
+  </div>
+</div>
+
+<!-- HUD -->
+<div id="hud">
+  <div class="score-panel" id="panelBlack" style="color:#dddddd;">
+    <div class="score-dot" style="background:#111;"></div>
+    <div class="score-name" style="color:#dddddd;">BLACK</div>
+    <div class="score-num" id="scoreBlack" style="color:#dddddd;">0</div>
+  </div>
+  <div id="turnBanner">
+    <div id="turnDot"></div>
+    <div id="turnText">BLACK'S TURN</div>
+  </div>
+  <div class="score-panel" id="panelBlue" style="color:#5588cc;">
+    <div class="score-num" id="scoreBlue" style="color:#5588cc;">0</div>
+    <div class="score-name" style="color:#5588cc;">BLUE</div>
+    <div class="score-dot" style="background:#2980b9;"></div>
+  </div>
+</div>
+
+<button id="resetBtn" onclick="resetGame()">New Game</button>
+
+<label id="cubeOption">
+  <input id="cubeToggle" type="checkbox" onchange="toggleCubes()">
+  CUBES
+</label>
+
+<div id="playerSidebar">
+  <h3>Players</h3>
+  <div id="playerList"></div>
+</div>
+
+<div id="winScreen">
+  <h2 id="winTitle">BLACK WINS!</h2>
+  <p  id="winMsg">Black: 5 — Blue: 5</p>
+  <button onclick="resetGame()">Play Again</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/addons/p5.sound.min.js"></script>
+<script>
+// ── CONFIG ────────────────────────────────────────────────────────────────────
+const HALF_LEN   = 100;
+const HALF_W     = 5;
+const MAX_DRAG   = 140;
+const FRICTION   = 0.87;
+const STICKS_PER = 4;
+const CLASSIC_PENS_PER_PLAYER = 3;
+const CUBE_COUNT = 5;
+const CUBE_SIZE  = 34;
+
+// How many collision resolution iterations per frame — more = no phasing
+const COLLISION_ITERS = 8;
+
+const BLACK_COL   = '#111111';
+const BLACK_LIGHT = '#dddddd';
+const BLUE_COL    = '#3a6fa8';
+const BLUE_LIGHT  = '#5a8fc8';
+
+const PEN_FILES = {
+  black: ['3black.png','4black.png','5black.png','2black.png'],
+  blue:  ['3blue.png', '4blue.png', '5blue.png', '2blue.png']
+};
+
+const CLASSIC_COLORS = [
+  { id:'red',    name:'Red',    hex:'#c0392b', light:'#e06060', file:'3red.png' },
+  { id:'blue',   name:'Blue',   hex:'#2980b9', light:'#5a8fc8', file:'3blue.png' },
+  { id:'green',  name:'Green',  hex:'#27ae60', light:'#52c678', file:'3green.png' },
+  { id:'yellow', name:'Yellow', hex:'#d6a629', light:'#f0cc5a', file:'3yellow.png' },
+  { id:'black',  name:'Black',  hex:'#111111', light:'#dddddd', file:'3black.png' }
+];
+
+const PEN_DRAW_W = HALF_LEN * 1.75;
+const PEN_DRAW_H = HALF_W   * 4.8;
+
+const PEN_STATS = {
+  3: { mass: 0.5,  friction: 0.97 },
+  2: { mass: 1.0,  friction: 0.78 },
+  4: { mass: 1.12, friction: 0.88 },
+  5: { mass: 0.92, friction: 0.84 }
+};
+
+let platX, platY, platW, platH;
+
+let sticks       = [];
+let obstacles    = [];
+let particles    = [];
+let selected     = null;
+let dragStart    = null;
+let gameState    = 'menu';
+let selectedMode = 'battle';
+let gameMode     = 'battle';
+let scores       = { black: 0, blue: 0 };
+let currentTurn  = 'black';
+let penImgs      = { black: [], blue: [] };
+let classicImgs  = {};
+let classicSetupPlayers = [
+  { name:'Player 1', colorId:'red' },
+  { name:'Player 2', colorId:'blue' }
+];
+let classicPlayers = [];
+let classicTurnIndex = 0;
+let pendingWinner= null;
+let pendingLeft  = { black: 0, blue: 0 };
+let soundsReady  = false;
+let flickOsc, flickEnv, hitOsc, hitEnv, hitNoise, hitNoiseEnv;
+let lastHitSoundFrame = -20;
+let firstMoveDone= false;
+
+// ── PRELOAD ───────────────────────────────────────────────────────────────────
+function preload() {
+  for (let team in PEN_FILES) {
+    penImgs[team] = PEN_FILES[team].map(f => loadImage('assets/' + f));
+  }
+  for (let c of CLASSIC_COLORS) {
+    classicImgs[c.id] = loadImage('assets/' + c.file);
+  }
+}
+
+function trimTransparentImage(img) {
+  img.loadPixels();
+  let minX = img.width, minY = img.height, maxX = -1, maxY = -1;
+  for (let y = 0; y < img.height; y++) {
+    for (let x = 0; x < img.width; x++) {
+      if (img.pixels[(y * img.width + x) * 4 + 3] > 8) {
+        minX = min(minX, x); minY = min(minY, y);
+        maxX = max(maxX, x); maxY = max(maxY, y);
+      }
+    }
+  }
+  if (maxX < minX || maxY < minY) return img;
+  return img.get(minX, minY, maxX - minX + 1, maxY - minY + 1);
+}
+
+// ── SETUP ─────────────────────────────────────────────────────────────────────
+function setup() {
+  for (let team in penImgs) {
+    penImgs[team] = penImgs[team].map(trimTransparentImage);
+  }
+  for (let id in classicImgs) {
+    classicImgs[id] = trimTransparentImage(classicImgs[id]);
+  }
+  createCanvas(window.innerWidth, window.innerHeight);
+  computePlat();
+  renderClassicSetup();
+}
+
+function windowResized() {
+  resizeCanvas(window.innerWidth, window.innerHeight);
+  computePlat();
+}
+
+function computePlat() {
+  platW = min(width  * 0.72, 820);
+  platH = min(height * 0.72, 680);
+  platX = (width  - platW) / 2;
+  platY = (height - platH) / 2 + 24;
+}
+
+function selectMode(mode) {
+  selectedMode = mode;
+  document.getElementById('modeBattle').classList.toggle('selected', mode === 'battle');
+  document.getElementById('modeClassic').classList.toggle('selected', mode === 'classic');
+}
+
+function handlePlay() {
+  if (selectedMode === 'battle') {
+    startBattleGame();
+    return;
+  }
+  document.getElementById('menu').style.display = 'none';
+  document.getElementById('classicSetup').style.display = 'flex';
+  renderClassicSetup();
+}
+
+function backToMenu() {
+  document.getElementById('classicSetup').style.display = 'none';
+  document.getElementById('menu').style.display = 'flex';
+}
+
+function renderClassicSetup() {
+  let holder = document.getElementById('classicPlayers');
+  if (!holder) return;
+  holder.innerHTML = '';
+  classicSetupPlayers.forEach((player, index) => {
+    let row = document.createElement('div');
+    row.className = 'classic-player-row';
+
+    let input = document.createElement('input');
+    input.maxLength = 14;
+    input.placeholder = 'Player ' + (index + 1);
+    input.value = player.name;
+    input.oninput = () => { classicSetupPlayers[index].name = input.value; };
+
+    let swatches = document.createElement('div');
+    swatches.className = 'color-swatches';
+    CLASSIC_COLORS.forEach(c => {
+      let sw = document.createElement('div');
+      sw.className = 'swatch' + (player.colorId === c.id ? ' picked' : '');
+      sw.style.background = c.hex;
+      sw.title = c.name;
+      sw.onclick = () => {
+        if (classicSetupPlayers.some((p, i) => i !== index && p.colorId === c.id)) return;
+        classicSetupPlayers[index].colorId = c.id;
+        renderClassicSetup();
+      };
+      swatches.appendChild(sw);
+    });
+
+    if (classicSetupPlayers.length > 2) {
+      let remove = document.createElement('button');
+      remove.className = 'remove-player';
+      remove.innerText = 'x';
+      remove.onclick = () => {
+        classicSetupPlayers.splice(index, 1);
+        renderClassicSetup();
+      };
+      swatches.appendChild(remove);
+    }
+
+    row.appendChild(input);
+    row.appendChild(swatches);
+    holder.appendChild(row);
+  });
+}
+
+function addClassicPlayer() {
+  if (classicSetupPlayers.length >= CLASSIC_COLORS.length) return;
+  let used = classicSetupPlayers.map(p => p.colorId);
+  let next = CLASSIC_COLORS.find(c => !used.includes(c.id));
+  if (!next) return;
+  classicSetupPlayers.push({
+    name: 'Player ' + (classicSetupPlayers.length + 1),
+    colorId: next.id
+  });
+  renderClassicSetup();
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+function initGame() {
+  sticks        = [];
+  obstacles     = [];
+  particles     = [];
+  selected      = null;
+  dragStart     = null;
+  if (gameMode === 'battle') {
+    scores      = { black: 0, blue: 0 };
+    currentTurn = 'black';
+    pendingLeft = { black: STICKS_PER, blue: STICKS_PER };
+  } else {
+    classicPlayers.forEach(p => p.eliminated = false);
+    classicTurnIndex = 0;
+    currentTurn = classicPlayers[0] ? classicPlayers[0].team : '';
+    pendingLeft = {};
+  }
+  pendingWinner = null;
+  firstMoveDone = false;
+
+  placeSticks();
+
+  let cubeToggle = document.getElementById('cubeToggle');
+  cubeToggle.checked = false;
+  document.getElementById('cubeOption').style.display  = 'flex';
+  document.getElementById('winScreen').style.display   = 'none';
+  document.getElementById('playerSidebar').style.display = gameMode === 'classic' ? 'block' : 'none';
+  updateHUD();
+}
+
+function placeSticks() {
+  let cx  = platX + platW / 2;
+  let cy  = platY + platH / 2;
+  let sx  = platW * 0.38;
+  let sy  = platH * 0.38;
+  let all = [];
+
+  if (gameMode === 'battle') {
+    for (let team of ['black', 'blue']) {
+      for (let placed = 0; placed < STICKS_PER; placed++) {
+        let s = placeSinglePen(cx, cy, sx, sy, all, team, placed);
+        if (s) all.push(s);
+      }
+    }
+  } else {
+    classicPlayers.forEach(player => {
+      for (let placed = 0; placed < CLASSIC_PENS_PER_PLAYER; placed++) {
+        let s = placeSinglePen(cx, cy, sx, sy, all, player.team, 0, player);
+        if (s) all.push(s);
+      }
+    });
+  }
+  sticks = all;
+}
+
+function placeSinglePen(cx, cy, sx, sy, all, team, penIndex, classicPlayer = null) {
+  for (let tries = 0; tries < 3000; tries++) {
+    let x   = cx + random(-sx, sx);
+    let y   = cy + random(-sy, sy);
+    let ang = random(TWO_PI);
+    let ax  = x + cos(ang) * HALF_LEN, ay = y + sin(ang) * HALF_LEN;
+    let bx  = x - cos(ang) * HALF_LEN, by = y - sin(ang) * HALF_LEN;
+
+    if (ax < platX+10 || ax > platX+platW-10 ||
+        bx < platX+10 || bx > platX+platW-10 ||
+        ay < platY+10 || ay > platY+platH-10 ||
+        by < platY+10 || by > platY+platH-10) continue;
+
+    let ok = true;
+    for (let s of all) {
+      if (segsTooClose(ax,ay,bx,by,s.ax,s.ay,s.bx,s.by, HALF_W*7)) {
+        ok = false; break;
+      }
+    }
+    if (!ok) continue;
+
+    let s = new Stick(x, y, ang, team, penIndex, classicPlayer);
+    return s;
+  }
+  return null;
+}
+
+function toggleCubes() {
+  if (gameState !== 'play' || firstMoveDone) return;
+  obstacles = document.getElementById('cubeToggle').checked ? makeObstacles() : [];
+}
+
+function hideCubeOption() {
+  firstMoveDone = true;
+  document.getElementById('cubeOption').style.display = 'none';
+}
+
+function makeObstacles() {
+  let blocks = [], tries = 0;
+  while (blocks.length < CUBE_COUNT && tries < 1500) {
+    tries++;
+    let size = random(CUBE_SIZE * 0.85, CUBE_SIZE * 1.15);
+    let x    = random(platX + size, platX + platW - size);
+    let y    = random(platY + size, platY + platH - size);
+    let ok   = true;
+
+    for (let s of sticks) {
+      if (ptSegDist(x, y, s.ax, s.ay, s.bx, s.by) < size * 1.25) { ok=false; break; }
+    }
+    for (let b of blocks) {
+      if (dist(x,y,b.x,b.y) < (size + b.size) * 1.05) { ok=false; break; }
+    }
+    if (ok) blocks.push(new Obstacle(x, y, size));
+  }
+  return blocks;
+}
+
+// ── DRAW ──────────────────────────────────────────────────────────────────────
+function draw() {
+  background(32, 32, 32);
+  drawPlatform();
+
+  if (gameState !== 'play' && gameState !== 'ending') return;
+
+  for (let o of obstacles) o.show();
+
+  for (let i = particles.length-1; i >= 0; i--) {
+    particles[i].update(); particles[i].show();
+    if (particles[i].dead()) particles.splice(i,1);
+  }
+
+  // Update positions first
+  for (let s of sticks) s.update();
+
+  // Run multiple collision resolution passes to prevent phasing/overlapping
+  if (gameState === 'play') {
+    for (let iter = 0; iter < COLLISION_ITERS; iter++) {
+      for (let s of sticks)
+        for (let o of obstacles)
+          s.resolveObstacle(o);
+
+      for (let i = 0; i < sticks.length; i++)
+        for (let j = i+1; j < sticks.length; j++)
+          sticks[i].resolve(sticks[j]);
+    }
+  }
+
+  // Draw pens — active team on top
+  let inactive = sticks.filter(s => s.team !== currentTurn || s.gone);
+  let active   = sticks.filter(s => s.team === currentTurn && !s.gone);
+  // Gone pens draw last so they fall over everything
+  let falling  = sticks.filter(s => s.gone);
+  let notFalling = sticks.filter(s => !s.gone);
+
+  // Draw order: inactive → active → falling (always on top while animating)
+  for (let s of notFalling) s.show();
+  for (let s of falling)    s.show();
+
+  if (gameState === 'play' && selected && dragStart) {
+    let pull = p5.Vector.sub(dragStart, createVector(mouseX, mouseY));
+    if (pull.mag() > MAX_DRAG) pull.setMag(MAX_DRAG);
+    if (pull.mag() > 6) drawArrow(dragStart, pull);
+  }
+
+  if (gameState === 'play')    checkWin();
+  if (gameState === 'ending')  checkPendingWin();
+}
+
+function drawPlatform() {
+  fill(195, 168, 128);
+  noStroke();
+  rect(platX, platY, platW, platH);
+
+  stroke(170, 145, 105, 55);
+  strokeWeight(1);
+  for (let y = platY+10; y < platY+platH; y += 20) {
+    line(platX, y + sin(y*0.08)*3, platX+platW, y + sin(y*0.08)*3);
+  }
+
+  noFill();
+  stroke(255, 255, 255, 200);
+  strokeWeight(3);
+  rect(platX, platY, platW, platH);
+
+  stroke(255, 255, 255, 40);
+  strokeWeight(8);
+  rect(platX, platY, platW, platH);
+}
+
+function drawArrow(origin, pull) {
+  let fwd = pull.copy();
+  push();
+  translate(origin.x, origin.y);
+
+  drawingContext.setLineDash([5, 6]);
+  stroke(255, 255, 255, 35);
+  strokeWeight(2);
+  line(0, 0, -fwd.x, -fwd.y);
+  drawingContext.setLineDash([]);
+
+  stroke(255, 255, 255, 38);
+  strokeWeight(7);
+  line(0, 0, fwd.x, fwd.y);
+
+  translate(fwd.x, fwd.y);
+  rotate(fwd.heading());
+  fill(255, 255, 255, 38);
+  noStroke();
+  let hs = 14 + (pull.mag() / MAX_DRAG) * 12;
+  triangle(hs, 0, -hs*0.55, hs*0.5, -hs*0.55, -hs*0.5);
+  pop();
+}
+
+// ── INPUT ─────────────────────────────────────────────────────────────────────
+function mousePressed() {
+  if (gameState !== 'play') return;
+  for (let s of sticks) {
+    if (!s.gone && s.team === currentTurn && s.hit(mouseX, mouseY)) {
+      selected  = s;
+      dragStart = createVector(mouseX, mouseY);
+      break;
+    }
+  }
+}
+
+function mouseReleased() {
+  if (gameState !== 'play' || !selected || !dragStart) return;
+
+  let pull = p5.Vector.sub(dragStart, createVector(mouseX, mouseY));
+  if (pull.mag() > MAX_DRAG) pull.setMag(MAX_DRAG);
+
+  if (pull.mag() > 8) {
+    let pwr     = pow(pull.mag() / MAX_DRAG, 1.1);
+    let clickPt = dragStart.copy();
+    let offset  = p5.Vector.sub(clickPt, selected.pos);
+
+    let perpAng  = selected.angle + HALF_PI;
+    let perp     = createVector(cos(perpAng), sin(perpAng));
+    let leverage = constrain(p5.Vector.dot(offset, perp) / HALF_LEN, -1, 1);
+
+    let axisDir = createVector(cos(selected.angle), sin(selected.angle));
+    let axisOff = p5.Vector.dot(offset, axisDir) / HALF_LEN;
+
+    let force = pull.copy().setMag(pwr * 22);
+    selected.kick(force, leverage, axisOff);
+    playFlickSound(pwr);
+    spawnParticles(clickPt.x, clickPt.y, pull, selected.team);
+    hideCubeOption();
+    switchTurn();
+  }
+
+  selected  = null;
+  dragStart = null;
+}
+
+function switchTurn() {
+  if (gameMode === 'battle') {
+    currentTurn = currentTurn === 'black' ? 'blue' : 'black';
+  } else {
+    let total = classicPlayers.length;
+    let tries = 0;
+    do {
+      classicTurnIndex = (classicTurnIndex + 1) % total;
+      tries++;
+    } while (classicPlayers[classicTurnIndex].eliminated && tries < total);
+    currentTurn = classicPlayers[classicTurnIndex] ? classicPlayers[classicTurnIndex].team : '';
+  }
+  updateHUD();
+}
+
+// ── SOUND ─────────────────────────────────────────────────────────────────────
+function initSounds() {
+  if (soundsReady || typeof p5 === 'undefined') return;
+  if (typeof userStartAudio === 'function') userStartAudio();
+
+  flickOsc = new p5.Oscillator('triangle');
+  flickEnv = new p5.Envelope();
+  flickEnv.setADSR(0.005, 0.08, 0.08, 0.08);
+  flickEnv.setRange(0.16, 0);
+  flickOsc.start(); flickOsc.amp(0);
+
+  hitOsc = new p5.Oscillator('sine');
+  hitEnv = new p5.Envelope();
+  hitEnv.setADSR(0.001, 0.035, 0.02, 0.06);
+  hitEnv.setRange(0.16, 0);
+  hitOsc.start(); hitOsc.amp(0);
+
+  hitNoise    = new p5.Noise('brown');
+  hitNoiseEnv = new p5.Envelope();
+  hitNoiseEnv.setADSR(0.001, 0.025, 0, 0.035);
+  hitNoiseEnv.setRange(0.08, 0);
+  hitNoise.start(); hitNoise.amp(0);
+
+  soundsReady = true;
+}
+
+function playFlickSound(power) {
+  initSounds();
+  if (!soundsReady) return;
+  let amp = constrain(map(power, 0, 1, 0.07, 0.2), 0.05, 0.2);
+  flickOsc.freq(constrain(map(power, 0, 1, 280, 720), 260, 760));
+  flickEnv.setRange(amp, 0);
+  flickEnv.play(flickOsc, 0, 0.06);
+}
+
+function playHitSound(strength) {
+  initSounds();
+  if (!soundsReady || frameCount - lastHitSoundFrame < 4) return;
+  lastHitSoundFrame = frameCount;
+  let amp = constrain(map(strength, 0, 16, 0.035, 0.18), 0.03, 0.18);
+  hitOsc.freq(constrain(map(strength, 0, 16, 170, 75), 65, 180));
+  hitEnv.setRange(amp, 0);
+  hitNoiseEnv.setRange(amp * 0.55, 0);
+  hitEnv.play(hitOsc, 0, 0.035);
+  hitNoiseEnv.play(hitNoise, 0, 0.02);
+}
+
+// ── PARTICLES ─────────────────────────────────────────────────────────────────
+function spawnParticles(x, y, dir, team) {
+  let col = team === 'black' ? BLACK_LIGHT : BLUE_LIGHT;
+  for (let i = 0; i < 12; i++) particles.push(new Particle(x, y, dir, col));
+}
+
+class Particle {
+  constructor(x, y, dir, col) {
+    this.pos  = createVector(x, y);
+    let spd   = random(1.5, 5);
+    let ang   = dir.heading() + random(-0.9, 0.9);
+    this.vel  = createVector(cos(ang)*spd, sin(ang)*spd);
+    this.life = 1; this.decay = random(0.04, 0.08);
+    this.r    = random(2.5, 6); this.col = col;
+  }
+  update() { this.pos.add(this.vel); this.vel.mult(0.9); this.life -= this.decay; }
+  show() {
+    let c = color(this.col);
+    noStroke(); fill(red(c), green(c), blue(c), this.life * 200);
+    ellipse(this.pos.x, this.pos.y, this.r * this.life * 2.2);
+  }
+  dead() { return this.life <= 0; }
+}
+
+// ── OBSTACLE ──────────────────────────────────────────────────────────────────
+class Obstacle {
+  constructor(x, y, size) {
+    this.x = x; this.y = y;
+    this.size   = size;
+    this.angle  = random(-0.15, 0.15);
+    this.radius = size * 0.68;
+  }
+  show() {
+    push();
+    translate(this.x, this.y);
+    rotate(this.angle);
+    rectMode(CENTER); noStroke();
+    fill(0, 0, 0, 45); rect(4, 5, this.size, this.size, 5);
+    fill(92, 74, 58);  rect(0, 0, this.size, this.size, 5);
+    fill(130, 104, 78); rect(-this.size*0.12, -this.size*0.18, this.size*0.62, this.size*0.46, 3);
+    stroke(50, 40, 32, 90); strokeWeight(2); noFill();
+    rect(0, 0, this.size, this.size, 5);
+    pop();
+  }
+}
+
+// ── STICK ─────────────────────────────────────────────────────────────────────
+class Stick {
+  constructor(x, y, angle, team, penIndex = 0, classicPlayer = null) {
+    this.pos    = createVector(x, y);
+    this.vel    = createVector(random(-0.2, 0.2), random(-0.1, 0.1));
+    this.angle  = angle;
+    this.angVel = random(-0.015, 0.015);
+    this.team   = team;
+    this.classicPlayer = classicPlayer;
+    this.penFile = classicPlayer ? classicPlayer.file : PEN_FILES[team][penIndex % PEN_FILES[team].length];
+    this.penType = Number(this.penFile.charAt(0));
+    this.stats   = PEN_STATS[this.penType] || { mass: 1, friction: FRICTION };
+    this.penImg  = classicPlayer ? classicImgs[classicPlayer.colorId] : penImgs[team][penIndex % penImgs[team].length];
+    this.gone    = false;
+    this.fallT   = 0;
+    this.fallDir = createVector(0, 1);
+    this.trail   = [];
+    this.rollPhase = random(TWO_PI);
+    this.rollVel   = 0;
+    this.col      = classicPlayer ? classicPlayer.hex   : team === 'black' ? BLACK_COL   : BLUE_COL;
+    this.colLight = classicPlayer ? classicPlayer.light : team === 'black' ? BLACK_LIGHT : BLUE_LIGHT;
+    this.calcEnds();
+  }
+
+  calcEnds() {
+    let ca = cos(this.angle), sa = sin(this.angle);
+    this.ax = this.pos.x + ca * HALF_LEN; this.ay = this.pos.y + sa * HALF_LEN;
+    this.bx = this.pos.x - ca * HALF_LEN; this.by = this.pos.y - sa * HALF_LEN;
+  }
+
+  kick(force, leverage, axisOff) {
+    this.vel.add(p5.Vector.div(force, this.stats.mass));
+    let cross = force.x * sin(this.angle) - force.y * cos(this.angle);
+    let tipFactor = pow(abs(axisOff), 1.35);
+    this.angVel += (cross * (0.2 + abs(leverage))) / (HALF_LEN * 1.4 * this.stats.mass);
+    this.angVel += axisOff * force.mag() * (0.0012 + tipFactor * 0.0032) / this.stats.mass;
+    this.rollVel += axisOff * force.mag() * 0.018 / this.stats.mass;
+  }
+
+  update() {
+    this.pos.add(this.vel);
+    this.vel.mult(this.stats.friction);
+    this.angle  += this.angVel;
+    this.angVel *= this.stats.friction;
+    this.rollPhase += this.rollVel;
+    this.rollVel *= 0.9;
+
+    if (this.gone) {
+      this.fallT = min(1, this.fallT + 0.04);
+      this.pos.add(p5.Vector.mult(this.fallDir, 1.5 + this.fallT * 2.2));
+      this.vel.mult(0.92);
+      this.angVel += 0.003;
+    }
+
+    this.calcEnds();
+
+    if (!this.gone) {
+      this.trail.push(this.pos.copy());
+      if (this.trail.length > 9) this.trail.shift();
+      this.checkBoundary();
+    }
+  }
+
+  checkBoundary() {
+    let outside = 0, total = 9;
+    for (let t = 0; t < total; t++) {
+      let tt = t / (total - 1);
+      let px = lerp(this.ax, this.bx, tt);
+      let py = lerp(this.ay, this.by, tt);
+      if (px < platX || px > platX+platW || py < platY || py > platY+platH)
+        outside++;
+    }
+
+    if (outside > total / 2) {
+      this.gone = true;
+      this.fallT = 0;
+      this.fallDir = createVector(
+        this.pos.x - (platX + platW/2),
+        this.pos.y - (platY + platH/2)
+      );
+      if (this.fallDir.mag() < 1) this.fallDir = createVector(0, 1);
+      this.fallDir.normalize();
+      if (gameMode === 'battle') {
+        scores[this.team]++;
+      } else {
+        let player = classicPlayers.find(p => p.team === this.team);
+        if (player && sticks.filter(s => s.team === this.team && !s.gone).length === 0) {
+          player.eliminated = true;
+        }
+      }
+      updateHUD();
+      return;
+    }
+
+    // Soft wall bounce when fully inside
+    if (outside === 0) {
+      let m = 6;
+      if (this.pos.x < platX+m)       { this.pos.x = platX+m;       this.vel.x *= -0.4; }
+      if (this.pos.x > platX+platW-m) { this.pos.x = platX+platW-m; this.vel.x *= -0.4; }
+      if (this.pos.y < platY+m)       { this.pos.y = platY+m;        this.vel.y *= -0.4; }
+      if (this.pos.y > platY+platH-m) { this.pos.y = platY+platH-m; this.vel.y *= -0.4; }
+    }
+  }
+
+  show() {
+    if (this.gone && this.fallT >= 1) return;
+    let spd       = this.vel.mag();
+    let fallScale = this.gone ? max(0.04, 1 - this.fallT * 0.96) : 1;
+    let fallAlpha = this.gone ? max(0, 255 * (1 - this.fallT))   : 255;
+    let rollAmount = constrain(abs(this.rollVel) * 5, 0, 0.32);
+    let rollSquash = 1 - rollAmount * (0.45 + 0.55 * abs(sin(this.rollPhase)));
+    let rollLift   = sin(this.rollPhase) * rollAmount * 4;
+
+    // Motion trail
+    if (!this.gone && spd > 2) {
+      for (let i = 0; i < this.trail.length; i++) {
+        let alpha = map(i, 0, this.trail.length, 0, 30);
+        push();
+        translate(this.trail[i].x, this.trail[i].y);
+        rotate(this.angle); rectMode(CENTER); noStroke();
+        let c = color(this.col);
+        fill(red(c), green(c), blue(c), alpha);
+        rect(0, 0, HALF_LEN*2, HALF_W*2, HALF_W);
+        pop();
+      }
+    }
+
+    let isActive   = !this.gone && this.team === currentTurn && !selected;
+    let isSelected = selected === this;
+
+    push();
+    translate(this.pos.x, this.pos.y);
+    rotate(this.angle);
+    scale(fallScale);
+    translate(0, rollLift);
+    scale(1, rollSquash);
+    imageMode(CENTER);
+    rectMode(CENTER);
+
+    // Shadow
+    noStroke(); fill(0, 0, 0, 35 * (fallAlpha / 255));
+    rect(4, 6, PEN_DRAW_W * 0.95, PEN_DRAW_H * 0.55, PEN_DRAW_H * 0.28);
+
+    tint(255, fallAlpha);
+    if (this.penImg) {
+      image(this.penImg, 0, 0, PEN_DRAW_W, PEN_DRAW_H);
+    } else {
+      let c = color(this.col);
+      fill(red(c), green(c), blue(c), fallAlpha);
+      noStroke();
+      rect(0, 0, HALF_LEN*2, HALF_W*2, HALF_W);
+    }
+    noTint();
+    pop();
+
+    // Hover / selected glow
+    if ((isActive && this.hit(mouseX, mouseY)) || isSelected) {
+      push();
+      translate(this.pos.x, this.pos.y);
+      rotate(this.angle); rectMode(CENTER); noFill();
+      stroke(255, 255, 255, isSelected ? 220 : 110);
+      strokeWeight(isSelected ? 2.5 : 1.5);
+      rect(0, 0, HALF_LEN*2+12, HALF_W*2+10, HALF_W+4);
+      pop();
+    }
+
+    // Dim inactive team
+    if (!this.gone && this.team !== currentTurn) {
+      push();
+      translate(this.pos.x, this.pos.y);
+      rotate(this.angle); rectMode(CENTER);
+      noStroke(); fill(32, 32, 32, 55);
+      rect(0, 0, HALF_LEN*2+8, HALF_W*2+8, HALF_W+3);
+      pop();
+    }
+  }
+
+  hit(mx, my) {
+    let dx = mx - this.pos.x, dy = my - this.pos.y;
+    let ca = cos(-this.angle), sa = sin(-this.angle);
+    let lx = dx*ca - dy*sa, ly = dx*sa + dy*ca;
+    return abs(lx) < HALF_LEN+16 && abs(ly) < HALF_W+10;
+  }
+
+  resolve(other) {
+    if (this.gone || other.gone) return;
+
+    let res  = closestSegSeg(this.ax, this.ay, this.bx, this.by,
+                              other.ax, other.ay, other.bx, other.by);
+    // Use a larger minimum distance and stronger restitution to prevent phasing
+    let minD = HALF_W * 2 + 4;
+    if (res.d >= minD) return;
+
+    let invA   = 1 / this.stats.mass;
+    let invB   = 1 / other.stats.mass;
+    let invSum = invA + invB;
+
+    // Positional correction — push apart proportional to overlap, with a
+    // slop tolerance to avoid jitter, but large enough to prevent tunneling
+    let overlap = minD - res.d;
+    let slop    = 0.5;
+    let corr    = max(overlap - slop, 0) / invSum * 1.0; // full correction
+
+    this.pos.x  += res.nx * corr * invA;
+    this.pos.y  += res.ny * corr * invA;
+    other.pos.x -= res.nx * corr * invB;
+    other.pos.y -= res.ny * corr * invB;
+
+    // Recalculate ends after positional push
+    this.calcEnds();
+    other.calcEnds();
+
+    // Velocity impulse — only if approaching
+    let rvx = this.vel.x - other.vel.x;
+    let rvy = this.vel.y - other.vel.y;
+    let dot = rvx * res.nx + rvy * res.ny;
+
+    if (dot < 0) {
+      let restitution = 0.55; // bounciness — higher than before for cleaner separations
+      let impulse = (-(1 + restitution) * dot) / invSum;
+      playHitSound(abs(dot));
+
+      this.vel.x  += impulse * invA * res.nx;
+      this.vel.y  += impulse * invA * res.ny;
+      other.vel.x -= impulse * invB * res.nx;
+      other.vel.y -= impulse * invB * res.ny;
+
+      // Angular response
+      this.angVel  += dot * 0.008 * invA;
+      other.angVel -= dot * 0.008 * invB;
+      this.angVel  += (res.s - 0.5) * abs(dot) * 0.028 * invA;
+      other.angVel -= (res.t - 0.5) * abs(dot) * 0.028 * invB;
+      this.rollVel += (res.s - 0.5) * abs(dot) * 0.035;
+      other.rollVel -= (res.t - 0.5) * abs(dot) * 0.035;
+    }
+
+    this.calcEnds();
+    other.calcEnds();
+  }
+
+  resolveObstacle(obstacle) {
+    if (this.gone) return;
+    let dx = this.bx - this.ax, dy = this.by - this.ay, l2 = dx*dx + dy*dy;
+    if (l2 === 0) return;
+    let t  = constrain(((obstacle.x - this.ax)*dx + (obstacle.y - this.ay)*dy) / l2, 0, 1);
+    let px = this.ax + t*dx, py = this.ay + t*dy;
+    let nx = px - obstacle.x, ny = py - obstacle.y;
+    let d  = sqrt(nx*nx + ny*ny);
+    let minD = obstacle.radius + HALF_W * 2;
+
+    if (d < minD) {
+      if (d < 0.001) {
+        nx = cos(this.angle + HALF_PI); ny = sin(this.angle + HALF_PI); d = 1;
+      } else { nx /= d; ny /= d; }
+
+      // Full positional correction for obstacles too
+      let push = minD - d;
+      this.pos.x += nx * push;
+      this.pos.y += ny * push;
+
+      let into = this.vel.x*nx + this.vel.y*ny;
+      if (into < 0) {
+        let restitution = 0.55;
+        this.vel.x -= (1 + restitution) * into * nx;
+        this.vel.y -= (1 + restitution) * into * ny;
+        this.angVel += into * 0.012 * (t - 0.5);
+        this.rollVel += (t - 0.5) * abs(into) * 0.04;
+        playHitSound(abs(into) * 1.4);
+      }
+      this.calcEnds();
+    }
+  }
+}
+
+// ── GEOMETRY ──────────────────────────────────────────────────────────────────
+function segsTooClose(ax,ay,bx,by,cx,cy,dx,dy,thresh) {
+  for (let t = 0; t <= 1; t += 0.1)
+    if (ptSegDist(lerp(ax,bx,t), lerp(ay,by,t), cx,cy,dx,dy) < thresh) return true;
+  return false;
+}
+function ptSegDist(px,py,ax,ay,bx,by) {
+  let dx=bx-ax, dy=by-ay, l2=dx*dx+dy*dy;
+  if (l2===0) return dist(px,py,ax,ay);
+  let t = constrain(((px-ax)*dx+(py-ay)*dy)/l2, 0, 1);
+  return dist(px,py, ax+t*dx, ay+t*dy);
+}
+function closestSegSeg(ax,ay,bx,by,cx,cy,dx,dy) {
+  let u={x:bx-ax,y:by-ay}, v={x:dx-cx,y:dy-cy}, w={x:ax-cx,y:ay-cy};
+  let a=u.x*u.x+u.y*u.y, e=v.x*v.x+v.y*v.y, f=v.x*w.x+v.y*w.y;
+  let s, t;
+  if (a<1e-6 && e<1e-6) { s=0; t=0; }
+  else if (a<1e-6)       { s=0; t=constrain(f/e,0,1); }
+  else {
+    let c=u.x*w.x+u.y*w.y;
+    if (e<1e-6) { t=0; s=constrain(-c/a,0,1); }
+    else {
+      let b2=u.x*v.x+u.y*v.y, denom=a*e-b2*b2;
+      s = denom!==0 ? constrain((b2*f-c*e)/denom,0,1) : 0;
+      t = constrain((b2*s+f)/e,0,1);
+      s = constrain((b2*t-c)/a,0,1);
+      t = constrain((b2*s+f)/e,0,1);
+    }
+  }
+  let p1={x:ax+s*u.x, y:ay+s*u.y}, p2={x:cx+t*v.x, y:cy+t*v.y};
+  let ddx=p1.x-p2.x, ddy=p1.y-p2.y, dd=sqrt(ddx*ddx+ddy*ddy);
+  return { d:dd, nx:dd>0?ddx/dd:1, ny:dd>0?ddy/dd:0, s, t };
+}
+
+// ── HUD & GAME FLOW ───────────────────────────────────────────────────────────
+function updateHUD() {
+  if (gameMode === 'battle') {
+    document.getElementById('scoreBlack').innerText = scores.black;
+    document.getElementById('scoreBlue').innerText  = scores.blue;
+
+    let isBlack = currentTurn === 'black';
+    document.getElementById('turnDot').style.background = isBlack ? '#555' : BLUE_COL;
+    document.getElementById('turnText').innerText        = isBlack ? "BLACK'S TURN" : "BLUE'S TURN";
+
+    document.getElementById('panelBlack').classList.toggle('active-panel', isBlack);
+    document.getElementById('panelBlue').classList.toggle('active-panel', !isBlack);
+    return;
+  }
+
+  if (classicPlayers[classicTurnIndex] && classicPlayers[classicTurnIndex].eliminated) {
+    let total = classicPlayers.length;
+    let tries = 0;
+    do {
+      classicTurnIndex = (classicTurnIndex + 1) % total;
+      tries++;
+    } while (classicPlayers[classicTurnIndex].eliminated && tries < total);
+    currentTurn = classicPlayers[classicTurnIndex] ? classicPlayers[classicTurnIndex].team : '';
+  }
+  let player = classicPlayers[classicTurnIndex];
+  document.getElementById('turnDot').style.background = player ? player.hex : '#888';
+  document.getElementById('turnText').innerText = player ? player.name.toUpperCase() + "'S TURN" : '';
+  buildPlayerList();
+}
+
+function checkWin() {
+  if (gameMode === 'battle') {
+    let blackLeft = sticks.filter(s => s.team==='black' && !s.gone).length;
+    let blueLeft  = sticks.filter(s => s.team==='blue'  && !s.gone).length;
+    if (blackLeft !== 0 && blueLeft !== 0) return;
+    pendingWinner = blackLeft===0 && blueLeft===0 ? 'DRAW'
+                  : blackLeft===0 ? 'BLUE' : 'BLACK';
+    pendingLeft   = { black: blackLeft, blue: blueLeft };
+    selected  = null;
+    dragStart = null;
+    gameState = 'ending';
+    return;
+  }
+
+  let alive = classicPlayers.filter(p => !p.eliminated);
+  if (alive.length <= 1) {
+    pendingWinner = alive.length === 1 ? alive[0].name : 'DRAW';
+    pendingLeft = {};
+    classicPlayers.forEach(p => {
+      pendingLeft[p.team] = sticks.filter(s => s.team === p.team && !s.gone).length;
+    });
+    selected  = null;
+    dragStart = null;
+    gameState = 'ending';
+  }
+}
+
+function checkPendingWin() {
+  if (sticks.every(s => !s.gone || s.fallT >= 1))
+    triggerWin(pendingWinner, pendingLeft);
+}
+
+function triggerWin(winner, leftCounts) {
+  gameState = 'menu';
+  document.getElementById('winTitle').innerText = winner==='DRAW' ? "IT'S A DRAW!" : winner + ' WINS!';
+  if (gameMode === 'battle') {
+    document.getElementById('winTitle').style.color =
+      winner==='BLACK' ? BLACK_LIGHT : winner==='BLUE' ? BLUE_LIGHT : '#eee';
+    document.getElementById('winMsg').innerText =
+      `Pens left - Black: ${leftCounts.black}  Blue: ${leftCounts.blue}`;
+  } else {
+    let player = classicPlayers.find(p => p.name === winner);
+    document.getElementById('winTitle').style.color = player ? player.light : '#eee';
+    document.getElementById('winMsg').innerText = classicPlayers
+      .map(p => `${p.name}: ${leftCounts[p.team] || 0} left`)
+      .join('   ');
+  }
+  document.getElementById('winScreen').style.display = 'flex';
+}
+
+function startBattleGame() {
+  gameMode = 'battle';
+  initSounds();
+  document.getElementById('menu').style.display    = 'none';
+  document.getElementById('classicSetup').style.display = 'none';
+  document.getElementById('hud').style.display     = 'flex';
+  document.getElementById('hud').style.justifyContent = 'space-between';
+  document.getElementById('panelBlack').style.display = 'flex';
+  document.getElementById('panelBlue').style.display  = 'flex';
+  document.getElementById('playerSidebar').style.display = 'none';
+  document.getElementById('resetBtn').style.display= 'block';
+  gameState = 'play';
+  initGame();
+}
+
+function startClassicGame() {
+  gameMode = 'classic';
+  classicPlayers = classicSetupPlayers.map((p, i) => {
+    let color = CLASSIC_COLORS.find(c => c.id === p.colorId) || CLASSIC_COLORS[i];
+    return {
+      team: 'classic' + i,
+      name: (p.name || ('Player ' + (i + 1))).trim() || ('Player ' + (i + 1)),
+      colorId: color.id,
+      hex: color.hex,
+      light: color.light,
+      file: color.file,
+      eliminated: false
+    };
+  });
+  initSounds();
+  document.getElementById('menu').style.display = 'none';
+  document.getElementById('classicSetup').style.display = 'none';
+  document.getElementById('hud').style.display = 'flex';
+  document.getElementById('hud').style.justifyContent = 'center';
+  document.getElementById('panelBlack').style.display = 'none';
+  document.getElementById('panelBlue').style.display  = 'none';
+  document.getElementById('playerSidebar').style.display = 'block';
+  document.getElementById('resetBtn').style.display = 'block';
+  gameState = 'play';
+  initGame();
+}
+
+function resetGame() {
+  document.getElementById('winScreen').style.display = 'none';
+  gameState = 'play';
+  initGame();
+}
+
+function buildPlayerList() {
+  let list = document.getElementById('playerList');
+  list.innerHTML = '';
+  classicPlayers.forEach((p, i) => {
+    let left = sticks.filter(s => s.team === p.team && !s.gone).length;
+    let row = document.createElement('div');
+    row.className = 'player-list-row' +
+      (i === classicTurnIndex && !p.eliminated ? ' active' : '') +
+      (p.eliminated ? ' eliminated' : '');
+    row.innerHTML = `<div class="player-dot" style="background:${p.hex}"></div>
+      <div class="player-name">${p.name}</div>
+      <div class="player-count">${left}</div>`;
+    list.appendChild(row);
+  });
+}
+</script>
+</body>
+</html>
