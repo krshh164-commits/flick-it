@@ -69,6 +69,20 @@
     width:27px;height:27px;padding:0;font-size:15px;box-shadow:none;border-radius:50%;
     letter-spacing:0;background:rgba(255,255,255,0.08);color:#ddd;
   }
+  .room-tools { width:min(560px,92vw);display:flex;gap:10px;margin:8px 0 14px; }
+  .room-link {
+    flex:1;min-width:0;border-radius:8px;border:1px solid rgba(255,255,255,0.14);
+    background:rgba(255,255,255,0.08);color:#ddd;font-family:'Pangolin',cursive;
+    font-size:13px;padding:9px 11px;outline:none;
+  }
+  .room-status { color:#999;font-size:13px;min-height:18px;text-align:center;margin-top:8px; }
+  .room-player-row {
+    display:flex;align-items:center;gap:9px;background:rgba(255,255,255,0.05);
+    border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:9px 11px;margin-bottom:8px;
+  }
+  .room-player-dot { width:12px;height:12px;border-radius:50%;flex-shrink:0; }
+  .room-player-name { flex:1;color:#ddd;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+  .room-player-host { color:#aaa;font-size:11px;letter-spacing:1px; }
   #classicSetup .setup-actions { display:flex;gap:12px;margin-top:18px;align-items:center; }
   #classicSetup button { padding:10px 24px;font-size:14px;font-weight:800;box-shadow:0 4px 16px rgba(192,57,43,0.35); }
   #classicSetup .soft-btn { background:rgba(255,255,255,0.09);box-shadow:none;color:#ddd; }
@@ -100,6 +114,10 @@
   }
   #turnDot  { width:16px;height:16px;border-radius:50%;transition:background 0.3s; }
   #turnText { font-size:13px;font-weight:700;color:#eee;letter-spacing:1px; }
+  #turnTimer {
+    min-width:26px;text-align:center;color:#ddd;font-size:13px;font-weight:900;
+    background:rgba(255,255,255,0.1);border-radius:8px;padding:2px 6px;
+  }
 
   #resetBtn {
     position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
@@ -136,6 +154,56 @@
   .player-name { flex:1;color:#ddd;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
   .player-count { color:#aaa;font-size:12px; }
 
+  #chatPanel {
+    position:fixed;left:0;top:64px;bottom:0;width:230px;display:none;
+    background:rgba(0,0,0,0.55);border-right:1px solid rgba(255,255,255,0.08);
+    padding:12px 10px;z-index:18;pointer-events:all;
+  }
+  #chatPanel h3 {
+    color:#888;font-size:11px;letter-spacing:2px;text-align:center;
+    text-transform:uppercase;margin-bottom:10px;
+  }
+  #chatMessages {
+    height:calc(100% - 132px);overflow-y:auto;padding-right:3px;
+    display:flex;flex-direction:column;gap:7px;
+  }
+  .chat-message {
+    background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);
+    border-radius:8px;padding:7px 8px;
+  }
+  .chat-author { font-size:11px;font-weight:900;letter-spacing:1px;margin-bottom:3px; }
+  .chat-text { color:#ddd;font-size:13px;line-height:1.35;word-break:break-word; }
+  #emojiBar { display:flex;gap:7px;justify-content:center;margin:10px 0; }
+  #emojiBar button {
+    width:34px;height:32px;border-radius:8px;border:1px solid rgba(255,255,255,0.12);
+    background:rgba(255,255,255,0.08);cursor:pointer;font-size:18px;
+    transition:transform 0.12s,background 0.12s;
+  }
+  #emojiBar button:hover { transform:translateY(-2px);background:rgba(255,255,255,0.16); }
+  #chatInputRow { display:flex;gap:6px; }
+  #chatInput {
+    min-width:0;flex:1;border-radius:8px;border:1px solid rgba(255,255,255,0.14);
+    background:rgba(255,255,255,0.08);color:#eee;font-family:'Pangolin',cursive;
+    font-size:13px;padding:8px 9px;outline:none;
+  }
+  #chatInput:focus { border-color:rgba(255,255,255,0.35); }
+  #chatSend {
+    width:42px;border-radius:8px;border:none;background:#c0392b;color:#fff;
+    font-family:'Pangolin',cursive;font-weight:900;cursor:pointer;
+  }
+  #reactionLayer {
+    position:fixed;inset:0;z-index:24;pointer-events:none;overflow:hidden;
+  }
+  .floating-reaction {
+    position:absolute;font-size:40px;filter:drop-shadow(0 5px 8px rgba(0,0,0,0.45));
+    animation:floatReaction 1.45s ease-out forwards;
+  }
+  @keyframes floatReaction {
+    0% { transform:translate(-50%, 16px) scale(0.65) rotate(-8deg);opacity:0; }
+    18% { opacity:1; }
+    100% { transform:translate(-50%, -96px) scale(1.22) rotate(10deg);opacity:0; }
+  }
+
   #winScreen {
     position:fixed;inset:0;display:none;
     flex-direction:column;align-items:center;justify-content:center;
@@ -170,13 +238,23 @@
 </div>
 
 <div id="classicSetup">
-  <h2>CLASSIC SETUP</h2>
-  <div class="setup-sub">Enter each player name and choose a colour</div>
+  <h2>CLASSIC ROOM</h2>
+  <div class="setup-sub">Create a room, share the link, then each player joins with name and colour</div>
+  <div class="room-tools">
+    <input id="roomLink" class="room-link" readonly placeholder="Create a room to get link">
+    <button class="soft-btn" onclick="copyRoomLink()">Copy</button>
+  </div>
+  <div class="classic-player-row" id="joinForm">
+    <input id="joinName" maxlength="14" placeholder="Your name">
+    <div class="color-swatches" id="joinSwatches"></div>
+  </div>
   <div id="classicPlayers"></div>
+  <div id="roomStatus" class="room-status"></div>
   <div class="setup-actions">
-    <button class="soft-btn" onclick="addClassicPlayer()">Add Player</button>
+    <button class="soft-btn" onclick="createClassicRoom()">Create Room</button>
+    <button onclick="joinClassicRoom()">Join Room</button>
+    <button id="startRoomBtn" onclick="startRoomGame()">Start Game</button>
     <button class="soft-btn" onclick="backToMenu()">Back</button>
-    <button onclick="startClassicGame()">Start Classic</button>
   </div>
 </div>
 
@@ -190,6 +268,7 @@
   <div id="turnBanner">
     <div id="turnDot"></div>
     <div id="turnText">BLACK'S TURN</div>
+    <div id="turnTimer">10</div>
   </div>
   <div class="score-panel" id="panelBlue" style="color:#5588cc;">
     <div class="score-num" id="scoreBlue" style="color:#5588cc;">0</div>
@@ -210,6 +289,22 @@
   <div id="playerList"></div>
 </div>
 
+<div id="chatPanel">
+  <h3>Room Chat</h3>
+  <div id="chatMessages"></div>
+  <div id="emojiBar">
+    <button onclick="sendReaction('😢')" title="Sad">😢</button>
+    <button onclick="sendReaction('😡')" title="Angry">😡</button>
+    <button onclick="sendReaction('😂')" title="Laughing">😂</button>
+  </div>
+  <div id="chatInputRow">
+    <input id="chatInput" maxlength="80" placeholder="Type message" onkeydown="handleChatKey(event)">
+    <button id="chatSend" onclick="sendChatMessage()">Send</button>
+  </div>
+</div>
+
+<div id="reactionLayer"></div>
+
 <div id="winScreen">
   <h2 id="winTitle">BLACK WINS!</h2>
   <p  id="winMsg">Black: 5 — Blue: 5</p>
@@ -223,6 +318,7 @@
 const HALF_LEN   = 100;
 const HALF_W     = 5;
 const MAX_DRAG   = 140;
+const TURN_IDLE_LIMIT = 10000;
 const FRICTION   = 0.87;
 const STICKS_PER = 4;
 const CLASSIC_PENS_PER_PLAYER = 3;
@@ -280,12 +376,21 @@ let classicSetupPlayers = [
 ];
 let classicPlayers = [];
 let classicTurnIndex = 0;
+let activeRoomId = '';
+let localPlayerId = localStorage.getItem('flickItPlayerId') || '';
+let selectedJoinColor = 'red';
+let roomState = null;
+let roomEvents = null;
 let pendingWinner= null;
 let pendingLeft  = { black: 0, blue: 0 };
+let chatMessages = [];
+let roomChatOnline = false;
 let soundsReady  = false;
 let flickOsc, flickEnv, hitOsc, hitEnv, hitNoise, hitNoiseEnv;
 let lastHitSoundFrame = -20;
 let firstMoveDone= false;
+let turnStartedAt = 0;
+let turnTouched = false;
 
 // ── PRELOAD ───────────────────────────────────────────────────────────────────
 function preload() {
@@ -323,6 +428,8 @@ function setup() {
   createCanvas(window.innerWidth, window.innerHeight);
   computePlat();
   renderClassicSetup();
+  setupRoomChat();
+  openRoomFromUrl();
 }
 
 function windowResized() {
@@ -350,6 +457,7 @@ function handlePlay() {
   }
   document.getElementById('menu').style.display = 'none';
   document.getElementById('classicSetup').style.display = 'flex';
+  if (!activeRoomId) createClassicRoom();
   renderClassicSetup();
 }
 
@@ -361,47 +469,21 @@ function backToMenu() {
 function renderClassicSetup() {
   let holder = document.getElementById('classicPlayers');
   if (!holder) return;
+  renderJoinSwatches();
   holder.innerHTML = '';
-  classicSetupPlayers.forEach((player, index) => {
+  let roomLink = document.getElementById('roomLink');
+  if (roomLink) roomLink.value = activeRoomId ? roomUrl(activeRoomId) : '';
+  let players = roomState ? roomState.players : [];
+  players.forEach(player => {
+    let color = CLASSIC_COLORS.find(c => c.id === player.colorId) || CLASSIC_COLORS[0];
     let row = document.createElement('div');
-    row.className = 'classic-player-row';
-
-    let input = document.createElement('input');
-    input.maxLength = 14;
-    input.placeholder = 'Player ' + (index + 1);
-    input.value = player.name;
-    input.oninput = () => { classicSetupPlayers[index].name = input.value; };
-
-    let swatches = document.createElement('div');
-    swatches.className = 'color-swatches';
-    CLASSIC_COLORS.forEach(c => {
-      let sw = document.createElement('div');
-      sw.className = 'swatch' + (player.colorId === c.id ? ' picked' : '');
-      sw.style.background = c.hex;
-      sw.title = c.name;
-      sw.onclick = () => {
-        if (classicSetupPlayers.some((p, i) => i !== index && p.colorId === c.id)) return;
-        classicSetupPlayers[index].colorId = c.id;
-        renderClassicSetup();
-      };
-      swatches.appendChild(sw);
-    });
-
-    if (classicSetupPlayers.length > 2) {
-      let remove = document.createElement('button');
-      remove.className = 'remove-player';
-      remove.innerText = 'x';
-      remove.onclick = () => {
-        classicSetupPlayers.splice(index, 1);
-        renderClassicSetup();
-      };
-      swatches.appendChild(remove);
-    }
-
-    row.appendChild(input);
-    row.appendChild(swatches);
+    row.className = 'room-player-row';
+    row.innerHTML = `<div class="room-player-dot" style="background:${color.hex}"></div>
+      <div class="room-player-name">${escapeHtml(player.name)}</div>
+      <div class="room-player-host">${roomState.hostId === player.id ? 'HOST' : ''}</div>`;
     holder.appendChild(row);
   });
+  updateRoomStatus(players.length ? `${players.length}/5 players joined` : 'Waiting for players');
 }
 
 function addClassicPlayer() {
@@ -414,6 +496,176 @@ function addClassicPlayer() {
     colorId: next.id
   });
   renderClassicSetup();
+}
+
+function renderJoinSwatches() {
+  let holder = document.getElementById('joinSwatches');
+  if (!holder) return;
+  holder.innerHTML = '';
+  let taken = roomState ? roomState.players.map(p => p.colorId) : [];
+  CLASSIC_COLORS.forEach(c => {
+    let ownsColor = roomState && roomState.players.some(p => p.id === localPlayerId && p.colorId === c.id);
+    let isTaken = taken.includes(c.id) && !ownsColor;
+    let sw = document.createElement('div');
+    sw.className = 'swatch' + (selectedJoinColor === c.id ? ' picked' : '');
+    sw.style.background = c.hex;
+    sw.style.opacity = isTaken ? '0.3' : '1';
+    sw.title = isTaken ? c.name + ' taken' : c.name;
+    sw.onclick = () => {
+      if (isTaken) return;
+      selectedJoinColor = c.id;
+      renderClassicSetup();
+    };
+    holder.appendChild(sw);
+  });
+}
+
+async function createClassicRoom() {
+  if (location.protocol === 'file:') {
+    updateRoomStatus('Open with npm start and use localhost to create a room');
+    return;
+  }
+  let res = await fetch('/api/rooms', { method: 'POST' });
+  roomState = await res.json();
+  activeRoomId = roomState.id;
+  history.replaceState(null, '', '?room=' + activeRoomId);
+  connectRoomEvents(activeRoomId);
+  renderClassicSetup();
+}
+
+async function joinClassicRoom() {
+  if (!activeRoomId) await createClassicRoom();
+  let input = document.getElementById('joinName');
+  let name = (input.value || '').trim();
+  if (!name) {
+    updateRoomStatus('Type your name first');
+    input.focus();
+    return;
+  }
+  let res = await fetch('/api/rooms/' + activeRoomId + '/join', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, colorId: selectedJoinColor, playerId: localPlayerId })
+  });
+  let data = await res.json();
+  if (!res.ok || !data.ok) {
+    updateRoomStatus(data.error || 'Could not join room');
+    return;
+  }
+  localPlayerId = data.playerId;
+  localStorage.setItem('flickItPlayerId', localPlayerId);
+  roomState = data.room;
+  connectRoomEvents(activeRoomId);
+  renderClassicSetup();
+}
+
+async function startRoomGame() {
+  if (!roomState || roomState.players.length < 2) {
+    updateRoomStatus('Need at least 2 players');
+    return;
+  }
+  let res = await fetch('/api/rooms/' + activeRoomId + '/start', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ playerId: localPlayerId })
+  });
+  let data = await res.json();
+  if (!res.ok || !data.ok) {
+    updateRoomStatus(data.error || 'Could not start game');
+    return;
+  }
+  beginClassicFromRoom(data.room);
+}
+
+function beginClassicFromRoom(room) {
+  roomState = room;
+  classicPlayers = room.players.map((p, i) => {
+    let color = CLASSIC_COLORS.find(c => c.id === p.colorId) || CLASSIC_COLORS[i];
+    return {
+      team: 'classic' + i,
+      id: p.id,
+      name: p.name,
+      colorId: color.id,
+      hex: color.hex,
+      light: color.light,
+      file: color.file,
+      eliminated: false
+    };
+  });
+  randomSeed(room.seed || 1);
+  startClassicGame(true);
+}
+
+function connectRoomEvents(roomId) {
+  if (location.protocol === 'file:' || typeof EventSource === 'undefined') return;
+  if (roomEvents) roomEvents.close();
+  roomEvents = new EventSource('/events?room=' + roomId);
+  roomEvents.addEventListener('room', event => {
+    try {
+      roomState = JSON.parse(event.data);
+      renderClassicSetup();
+      if (roomState.started && gameState !== 'play') beginClassicFromRoom(roomState);
+    } catch (err) {}
+  });
+  roomEvents.addEventListener('start', event => {
+    try { beginClassicFromRoom(JSON.parse(event.data)); } catch (err) {}
+  });
+  roomEvents.addEventListener('history', event => {
+    try {
+      chatMessages = JSON.parse(event.data) || [];
+      renderChatMessages();
+    } catch (err) {}
+  });
+  roomEvents.addEventListener('chat', event => {
+    try { addChatMessage(JSON.parse(event.data)); } catch (err) {}
+  });
+  roomEvents.addEventListener('reaction', event => {
+    try {
+      let msg = JSON.parse(event.data);
+      addChatMessage(msg);
+      spawnFloatingReaction(msg.text);
+    } catch (err) {}
+  });
+}
+
+function openRoomFromUrl() {
+  let id = new URLSearchParams(location.search).get('room');
+  if (!id) return;
+  selectedMode = 'classic';
+  activeRoomId = id.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+  document.getElementById('menu').style.display = 'none';
+  document.getElementById('classicSetup').style.display = 'flex';
+  connectRoomEvents(activeRoomId);
+  fetch('/api/rooms/' + activeRoomId).then(r => r.json()).then(room => {
+    roomState = room;
+    renderClassicSetup();
+  }).catch(() => updateRoomStatus('Could not load room'));
+}
+
+function roomUrl(id) {
+  return location.origin + location.pathname + '?room=' + id;
+}
+
+async function copyRoomLink() {
+  let link = document.getElementById('roomLink').value;
+  if (!link) return;
+  try {
+    await navigator.clipboard.writeText(link);
+    updateRoomStatus('Room link copied');
+  } catch (err) {
+    updateRoomStatus(link);
+  }
+}
+
+function updateRoomStatus(text) {
+  let status = document.getElementById('roomStatus');
+  if (status) status.innerText = text || '';
+}
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, ch => ({
+    '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+  }[ch]));
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
@@ -443,7 +695,10 @@ function initGame() {
   document.getElementById('cubeOption').style.display  = 'flex';
   document.getElementById('winScreen').style.display   = 'none';
   document.getElementById('playerSidebar').style.display = gameMode === 'classic' ? 'block' : 'none';
+  document.getElementById('chatPanel').style.display = 'block';
   updateHUD();
+  startTurnTimer();
+  renderChatMessages();
 }
 
 function placeSticks() {
@@ -534,6 +789,7 @@ function draw() {
   drawPlatform();
 
   if (gameState !== 'play' && gameState !== 'ending') return;
+  updateTurnTimer();
 
   for (let o of obstacles) o.show();
 
@@ -631,6 +887,7 @@ function mousePressed() {
     if (!s.gone && s.team === currentTurn && s.hit(mouseX, mouseY)) {
       selected  = s;
       dragStart = createVector(mouseX, mouseY);
+      markTurnTouched();
       break;
     }
   }
@@ -679,6 +936,38 @@ function switchTurn() {
     currentTurn = classicPlayers[classicTurnIndex] ? classicPlayers[classicTurnIndex].team : '';
   }
   updateHUD();
+  startTurnTimer();
+}
+
+function startTurnTimer() {
+  turnStartedAt = millis();
+  turnTouched = false;
+  updateTurnTimer();
+}
+
+function markTurnTouched() {
+  turnTouched = true;
+  let timer = document.getElementById('turnTimer');
+  if (timer) timer.innerText = '';
+}
+
+function updateTurnTimer() {
+  let timer = document.getElementById('turnTimer');
+  if (!timer) return;
+  if (gameState !== 'play' || turnTouched || selected) {
+    timer.innerText = '';
+    return;
+  }
+  let remaining = max(0, ceil((TURN_IDLE_LIMIT - (millis() - turnStartedAt)) / 1000));
+  timer.innerText = remaining;
+  if (remaining <= 0) skipIdleTurn();
+}
+
+function skipIdleTurn() {
+  if (gameState !== 'play' || turnTouched || selected) return;
+  selected = null;
+  dragStart = null;
+  switchTurn();
 }
 
 // ── SOUND ─────────────────────────────────────────────────────────────────────
@@ -730,7 +1019,8 @@ function playHitSound(strength) {
 
 // ── PARTICLES ─────────────────────────────────────────────────────────────────
 function spawnParticles(x, y, dir, team) {
-  let col = team === 'black' ? BLACK_LIGHT : BLUE_LIGHT;
+  let classicPlayer = classicPlayers.find(p => p.team === team);
+  let col = classicPlayer ? classicPlayer.light : team === 'black' ? BLACK_LIGHT : BLUE_LIGHT;
   for (let i = 0; i < 12; i++) particles.push(new Particle(x, y, dir, col));
 }
 
@@ -1164,6 +1454,7 @@ function triggerWin(winner, leftCounts) {
 
 function startBattleGame() {
   gameMode = 'battle';
+  clearChat();
   initSounds();
   document.getElementById('menu').style.display    = 'none';
   document.getElementById('classicSetup').style.display = 'none';
@@ -1172,6 +1463,7 @@ function startBattleGame() {
   document.getElementById('panelBlack').style.display = 'flex';
   document.getElementById('panelBlue').style.display  = 'flex';
   document.getElementById('playerSidebar').style.display = 'none';
+  document.getElementById('chatPanel').style.display = 'block';
   document.getElementById('resetBtn').style.display= 'block';
   gameState = 'play';
   initGame();
@@ -1179,6 +1471,7 @@ function startBattleGame() {
 
 function startClassicGame() {
   gameMode = 'classic';
+  clearChat();
   classicPlayers = classicSetupPlayers.map((p, i) => {
     let color = CLASSIC_COLORS.find(c => c.id === p.colorId) || CLASSIC_COLORS[i];
     return {
@@ -1199,6 +1492,7 @@ function startClassicGame() {
   document.getElementById('panelBlack').style.display = 'none';
   document.getElementById('panelBlue').style.display  = 'none';
   document.getElementById('playerSidebar').style.display = 'block';
+  document.getElementById('chatPanel').style.display = 'block';
   document.getElementById('resetBtn').style.display = 'block';
   gameState = 'play';
   initGame();
@@ -1207,7 +1501,137 @@ function startClassicGame() {
 function resetGame() {
   document.getElementById('winScreen').style.display = 'none';
   gameState = 'play';
+  clearChat();
   initGame();
+}
+
+function getCurrentChatPlayer() {
+  if (gameMode === 'classic') {
+    let player = classicPlayers[classicTurnIndex];
+    if (player) return { name: player.name, color: player.light };
+  }
+  if (currentTurn === 'black') return { name: 'Black', color: BLACK_LIGHT };
+  if (currentTurn === 'blue') return { name: 'Blue', color: BLUE_LIGHT };
+  return { name: 'Player', color: '#eee' };
+}
+
+function handleChatKey(event) {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    sendChatMessage();
+  }
+}
+
+function sendChatMessage() {
+  let input = document.getElementById('chatInput');
+  let text = input.value.trim();
+  if (!text) return;
+  let sender = getCurrentChatPlayer();
+  input.value = '';
+  publishRoomEvent('chat', {
+    name: sender.name,
+    color: sender.color,
+    text
+  });
+}
+
+function addChatMessage(msg) {
+  chatMessages.push({
+    name: msg.name || 'Player',
+    color: msg.color || '#eee',
+    text: msg.text || ''
+  });
+  if (chatMessages.length > 40) chatMessages.shift();
+  renderChatMessages();
+}
+
+function renderChatMessages() {
+  let box = document.getElementById('chatMessages');
+  if (!box) return;
+  box.innerHTML = '';
+  chatMessages.forEach(msg => {
+    let row = document.createElement('div');
+    row.className = 'chat-message';
+
+    let author = document.createElement('div');
+    author.className = 'chat-author';
+    author.style.color = msg.color;
+    author.textContent = msg.name;
+
+    let text = document.createElement('div');
+    text.className = 'chat-text';
+    text.textContent = msg.text;
+
+    row.appendChild(author);
+    row.appendChild(text);
+    box.appendChild(row);
+  });
+  box.scrollTop = box.scrollHeight;
+}
+
+function clearChat() {
+  chatMessages = [];
+  renderChatMessages();
+}
+
+function sendReaction(emoji) {
+  let sender = getCurrentChatPlayer();
+  publishRoomEvent('reaction', {
+    name: sender.name,
+    color: sender.color,
+    text: emoji
+  });
+}
+
+function spawnFloatingReaction(emoji) {
+  let layer = document.getElementById('reactionLayer');
+  if (!layer) return;
+  let el = document.createElement('div');
+  el.className = 'floating-reaction';
+  el.textContent = emoji;
+  el.style.left = random(platX + platW * 0.2, platX + platW * 0.8) + 'px';
+  el.style.top = random(platY + platH * 0.3, platY + platH * 0.75) + 'px';
+  layer.appendChild(el);
+  setTimeout(() => el.remove(), 1600);
+}
+
+function setupRoomChat() {
+  if (location.protocol === 'file:' || typeof EventSource === 'undefined') return;
+  let events = new EventSource('/events');
+  events.addEventListener('open', () => { roomChatOnline = true; });
+  events.addEventListener('history', event => {
+    try {
+      chatMessages = JSON.parse(event.data) || [];
+      renderChatMessages();
+    } catch (err) {}
+  });
+  events.addEventListener('chat', event => {
+    try { addChatMessage(JSON.parse(event.data)); } catch (err) {}
+  });
+  events.addEventListener('reaction', event => {
+    try {
+      let msg = JSON.parse(event.data);
+      addChatMessage(msg);
+      spawnFloatingReaction(msg.text);
+    } catch (err) {}
+  });
+  events.onerror = () => { roomChatOnline = false; };
+}
+
+async function publishRoomEvent(type, payload) {
+  let path = type === 'reaction' ? '/reaction' : '/chat';
+  if (location.protocol !== 'file:') {
+    try {
+      let res = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) return;
+    } catch (err) {}
+  }
+  addChatMessage(payload);
+  if (type === 'reaction') spawnFloatingReaction(payload.text);
 }
 
 function buildPlayerList() {
