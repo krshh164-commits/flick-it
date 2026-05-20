@@ -8,7 +8,8 @@
 <style>
   * { margin:0;padding:0;box-sizing:border-box; }
   body { background:#222; overflow:hidden; font-family:'Pangolin',cursive; }
-  canvas { display:block; }
+  canvas { display:block;transition:filter 0.2s; }
+  body.lobby-open canvas { filter:blur(8px); }
 
   #menu {
     position:fixed;inset:0;display:flex;flex-direction:column;
@@ -42,22 +43,23 @@
   #menu button:hover { transform:scale(1.06);background:#d04435; }
 
   #classicSetup {
-    position:fixed;inset:0;display:none;flex-direction:column;
-    align-items:center;justify-content:center;background:rgba(14,14,18,0.97);z-index:35;
+    position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+    padding:22px;background:rgba(0,0,0,0.52);z-index:35;
   }
-  #classicSetup h2 { color:#eee;font-size:30px;letter-spacing:3px;margin-bottom:6px; }
-  #classicSetup .setup-sub { color:#888;font-size:13px;margin-bottom:18px; }
-  #classicPlayers { width:min(560px,92vw);max-height:52vh;overflow:auto;padding-right:4px; }
-  .classic-player-row {
-    display:grid;grid-template-columns:minmax(130px,1fr) auto;gap:10px;align-items:center;
-    background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);
-    border-radius:8px;padding:10px 12px;margin-bottom:9px;
+  .lobby-card {
+    width:min(480px,92vw);max-height:calc(100vh - 44px);overflow:auto;
+    border-radius:18px;background:rgba(18,18,22,0.95);
+    border:1px solid rgba(255,255,255,0.12);box-shadow:0 22px 80px rgba(0,0,0,0.55);
+    padding:26px;color:#eee;text-align:center;
   }
-  .classic-player-row input {
-    width:100%;padding:9px 12px;border-radius:8px;outline:none;
-    font-family:'Pangolin',cursive;font-size:15px;color:#eee;
-    background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);
+  #classicSetup h2 { color:#eee;font-size:29px;letter-spacing:3px;margin-bottom:8px; }
+  #classicSetup .setup-sub { color:#aaa;font-size:13px;margin-bottom:20px;line-height:1.45; }
+  .lobby-field {
+    width:100%;padding:11px 13px;border-radius:8px;outline:none;margin-bottom:14px;
+    font-family:'Pangolin',cursive;font-size:16px;color:#eee;text-align:center;
+    background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.16);
   }
+  .lobby-field:focus { border-color:rgba(255,255,255,0.38); }
   .color-swatches { display:flex;gap:7px;align-items:center; }
   .swatch {
     width:27px;height:27px;border-radius:50%;cursor:pointer;
@@ -65,27 +67,32 @@
   }
   .swatch:hover { transform:scale(1.16); }
   .swatch.picked { border-color:#fff;transform:scale(1.1); }
-  .remove-player {
-    width:27px;height:27px;padding:0;font-size:15px;box-shadow:none;border-radius:50%;
-    letter-spacing:0;background:rgba(255,255,255,0.08);color:#ddd;
+  .swatch.disabled { cursor:not-allowed;opacity:0.26;filter:grayscale(0.85); }
+  .swatch.disabled:hover { transform:none; }
+  .lobby-swatches { justify-content:center;margin:2px 0 18px;flex-wrap:wrap; }
+  .room-code-row { display:flex;align-items:center;justify-content:center;gap:10px;margin:10px 0 18px;color:#ddd;font-size:16px; }
+  .room-code { color:#fff;font-size:22px;letter-spacing:3px;font-weight:900; }
+  .room-status { color:#aaa;font-size:13px;min-height:18px;text-align:center;margin-top:12px; }
+  .room-player-list {
+    max-height:220px;overflow:auto;margin:10px 0 14px;padding:5px;
+    border-radius:10px;background:rgba(255,255,255,0.035);border:1px solid rgba(255,255,255,0.08);
   }
-  .room-tools { width:min(560px,92vw);display:flex;gap:10px;margin:8px 0 14px; }
-  .room-link {
-    flex:1;min-width:0;border-radius:8px;border:1px solid rgba(255,255,255,0.14);
-    background:rgba(255,255,255,0.08);color:#ddd;font-family:'Pangolin',cursive;
-    font-size:13px;padding:9px 11px;outline:none;
-  }
-  .room-status { color:#999;font-size:13px;min-height:18px;text-align:center;margin-top:8px; }
   .room-player-row {
     display:flex;align-items:center;gap:9px;background:rgba(255,255,255,0.05);
     border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:9px 11px;margin-bottom:8px;
   }
-  .room-player-dot { width:12px;height:12px;border-radius:50%;flex-shrink:0; }
+  .room-player-row:last-child { margin-bottom:0; }
+  .room-player-dot { width:14px;height:14px;border-radius:50%;flex-shrink:0; }
   .room-player-name { flex:1;color:#ddd;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
-  .room-player-host { color:#aaa;font-size:11px;letter-spacing:1px; }
-  #classicSetup .setup-actions { display:flex;gap:12px;margin-top:18px;align-items:center; }
+  .room-badge {
+    color:#eee;font-size:10px;letter-spacing:1px;padding:3px 6px;border-radius:999px;
+    background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.12);
+  }
+  .lobby-choice { display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px; }
+  #classicSetup .setup-actions { display:flex;gap:12px;margin-top:18px;align-items:center;justify-content:center;flex-wrap:wrap; }
   #classicSetup button { padding:10px 24px;font-size:14px;font-weight:800;box-shadow:0 4px 16px rgba(192,57,43,0.35); }
   #classicSetup .soft-btn { background:rgba(255,255,255,0.09);box-shadow:none;color:#ddd; }
+  #classicSetup button:disabled { opacity:0.38;cursor:not-allowed;transform:none;background:#7d3029; }
   #classicSetup button:hover { transform:scale(1.04);background:#d04435; }
   #classicSetup .soft-btn:hover { background:rgba(255,255,255,0.16); }
 
@@ -238,24 +245,7 @@
 </div>
 
 <div id="classicSetup">
-  <h2>CLASSIC ROOM</h2>
-  <div class="setup-sub">Create a room, share the link, then each player joins with name and colour</div>
-  <div class="room-tools">
-    <input id="roomLink" class="room-link" readonly placeholder="Create a room to get link">
-    <button class="soft-btn" onclick="copyRoomLink()">Copy</button>
-  </div>
-  <div class="classic-player-row" id="joinForm">
-    <input id="joinName" maxlength="14" placeholder="Your name">
-    <div class="color-swatches" id="joinSwatches"></div>
-  </div>
-  <div id="classicPlayers"></div>
-  <div id="roomStatus" class="room-status"></div>
-  <div class="setup-actions">
-    <button class="soft-btn" onclick="createClassicRoom()">Create Room</button>
-    <button onclick="joinClassicRoom()">Join Room</button>
-    <button id="startRoomBtn" onclick="startRoomGame()">Start Game</button>
-    <button class="soft-btn" onclick="backToMenu()">Back</button>
-  </div>
+  <div class="lobby-card" id="lobbyCard"></div>
 </div>
 
 <!-- HUD -->
@@ -378,9 +368,15 @@ let classicPlayers = [];
 let classicTurnIndex = 0;
 let activeRoomId = '';
 let localPlayerId = localStorage.getItem('flickItPlayerId') || '';
-let selectedJoinColor = 'red';
 let roomState = null;
 let roomEvents = null;
+let lobbyState = null; // null | setup-create | setup-join-code | setup-join-name | lobby-host | lobby-guest
+let isHost = false;
+let roomCode = '';
+let playersList = [];
+let selectedJoinColor = 'red';
+let pendingJoinCode = '';
+let copiedTimer = null;
 let pendingWinner= null;
 let pendingLeft  = { black: 0, blue: 0 };
 let chatMessages = [];
@@ -448,42 +444,82 @@ function selectMode(mode) {
   selectedMode = mode;
   document.getElementById('modeBattle').classList.toggle('selected', mode === 'battle');
   document.getElementById('modeClassic').classList.toggle('selected', mode === 'classic');
+  lobbyState = null;
 }
 
 function handlePlay() {
-  if (selectedMode === 'battle') {
-    startBattleGame();
-    return;
-  }
   document.getElementById('menu').style.display = 'none';
-  document.getElementById('classicSetup').style.display = 'flex';
-  if (!activeRoomId) createClassicRoom();
-  renderClassicSetup();
+  showLobbyChoice();
 }
 
 function backToMenu() {
+  lobbyState = null;
+  document.body.classList.remove('lobby-open');
   document.getElementById('classicSetup').style.display = 'none';
   document.getElementById('menu').style.display = 'flex';
+  renderClassicSetup();
 }
 
 function renderClassicSetup() {
-  let holder = document.getElementById('classicPlayers');
-  if (!holder) return;
-  renderJoinSwatches();
-  holder.innerHTML = '';
-  let roomLink = document.getElementById('roomLink');
-  if (roomLink) roomLink.value = activeRoomId ? roomUrl(activeRoomId) : '';
-  let players = roomState ? roomState.players : [];
-  players.forEach(player => {
-    let color = CLASSIC_COLORS.find(c => c.id === player.colorId) || CLASSIC_COLORS[0];
-    let row = document.createElement('div');
-    row.className = 'room-player-row';
-    row.innerHTML = `<div class="room-player-dot" style="background:${color.hex}"></div>
-      <div class="room-player-name">${escapeHtml(player.name)}</div>
-      <div class="room-player-host">${roomState.hostId === player.id ? 'HOST' : ''}</div>`;
-    holder.appendChild(row);
-  });
-  updateRoomStatus(players.length ? `${players.length}/5 players joined` : 'Waiting for players');
+  let card = document.getElementById('lobbyCard');
+  if (!card) return;
+  syncLobbySnapshot();
+  if (!lobbyState) {
+    card.innerHTML = `
+      <h2>${selectedMode.toUpperCase()} GAME</h2>
+      <div class="setup-sub">Create a private room or join with a room code.</div>
+      <div class="lobby-choice">
+        <button onclick="showCreateSetup()">Create Game</button>
+        <button onclick="showJoinCodeSetup()">Join Game</button>
+      </div>
+      <div class="setup-actions"><button class="soft-btn" onclick="backToMenu()">Cancel</button></div>
+      <div id="roomStatus" class="room-status"></div>`;
+    return;
+  }
+  if (lobbyState === 'setup-create') {
+    card.innerHTML = `
+      <h2>CREATE GAME</h2>
+      <div class="setup-sub">${selectedMode.toUpperCase()} room setup</div>
+      <input id="joinName" class="lobby-field" maxlength="14" placeholder="Your name" autocomplete="off">
+      <div class="color-swatches lobby-swatches" id="joinSwatches"></div>
+      <div class="setup-actions">
+        <button onclick="createClassicRoom()">Create</button>
+        <button class="soft-btn" onclick="showLobbyChoice()">Cancel</button>
+      </div>
+      <div id="roomStatus" class="room-status"></div>`;
+    renderJoinSwatches(false);
+    return;
+  }
+  if (lobbyState === 'setup-join-code') {
+    card.innerHTML = `
+      <h2>JOIN GAME</h2>
+      <div class="setup-sub">Enter the room code from the host.</div>
+      <input id="roomCodeInput" class="lobby-field" maxlength="6" placeholder="ROOM CODE" autocomplete="off" oninput="formatRoomCodeInput(this)" onkeydown="handleJoinCodeKey(event)">
+      <div class="setup-actions">
+        <button onclick="loadJoinRoom()">Next</button>
+        <button class="soft-btn" onclick="showLobbyChoice()">Cancel</button>
+      </div>
+      <div id="roomStatus" class="room-status"></div>`;
+    let input = document.getElementById('roomCodeInput');
+    input.value = pendingJoinCode;
+    input.focus();
+    return;
+  }
+  if (lobbyState === 'setup-join-name') {
+    card.innerHTML = `
+      <h2>JOIN GAME</h2>
+      <div class="setup-sub">Room ${escapeHtml(roomCode)} is ready. Pick a name and an available colour.</div>
+      <input id="joinName" class="lobby-field" maxlength="14" placeholder="Your name" autocomplete="off">
+      <div class="color-swatches lobby-swatches" id="joinSwatches"></div>
+      <div class="setup-actions">
+        <button onclick="joinClassicRoom()">Join</button>
+        <button class="soft-btn" onclick="showJoinCodeSetup()">Cancel</button>
+      </div>
+      <div id="roomStatus" class="room-status"></div>`;
+    renderJoinSwatches(true);
+    return;
+  }
+  renderLobbyView(card);
 }
 
 function addClassicPlayer() {
@@ -498,18 +534,17 @@ function addClassicPlayer() {
   renderClassicSetup();
 }
 
-function renderJoinSwatches() {
+function renderJoinSwatches(disableTaken = false) {
   let holder = document.getElementById('joinSwatches');
   if (!holder) return;
   holder.innerHTML = '';
   let taken = roomState ? roomState.players.map(p => p.colorId) : [];
   CLASSIC_COLORS.forEach(c => {
     let ownsColor = roomState && roomState.players.some(p => p.id === localPlayerId && p.colorId === c.id);
-    let isTaken = taken.includes(c.id) && !ownsColor;
+    let isTaken = disableTaken && taken.includes(c.id) && !ownsColor;
     let sw = document.createElement('div');
-    sw.className = 'swatch' + (selectedJoinColor === c.id ? ' picked' : '');
+    sw.className = 'swatch' + (selectedJoinColor === c.id ? ' picked' : '') + (isTaken ? ' disabled' : '');
     sw.style.background = c.hex;
-    sw.style.opacity = isTaken ? '0.3' : '1';
     sw.title = isTaken ? c.name + ' taken' : c.name;
     sw.onclick = () => {
       if (isTaken) return;
@@ -520,21 +555,115 @@ function renderJoinSwatches() {
   });
 }
 
+function showLobbyChoice() {
+  lobbyState = null;
+  roomState = null;
+  activeRoomId = '';
+  roomCode = '';
+  playersList = [];
+  isHost = false;
+  pendingJoinCode = '';
+  document.body.classList.add('lobby-open');
+  document.getElementById('classicSetup').style.display = 'flex';
+  renderClassicSetup();
+}
+
+function showCreateSetup() {
+  lobbyState = 'setup-create';
+  roomState = null;
+  activeRoomId = '';
+  roomCode = '';
+  playersList = [];
+  isHost = false;
+  selectedJoinColor = firstOpenColor();
+  renderClassicSetup();
+}
+
+function showJoinCodeSetup() {
+  lobbyState = 'setup-join-code';
+  roomState = null;
+  activeRoomId = '';
+  roomCode = '';
+  playersList = [];
+  isHost = false;
+  selectedJoinColor = firstOpenColor();
+  renderClassicSetup();
+}
+
+function formatRoomCodeInput(input) {
+  input.value = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+  pendingJoinCode = input.value;
+}
+
+function handleJoinCodeKey(event) {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    loadJoinRoom();
+  }
+}
+
+async function loadJoinRoom() {
+  let input = document.getElementById('roomCodeInput');
+  let code = ((input && input.value) || pendingJoinCode || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+  if (code.length !== 6) {
+    updateRoomStatus('Enter a valid room code');
+    if (input) input.focus();
+    return;
+  }
+  if (location.protocol === 'file:') {
+    updateRoomStatus('Open with npm start and use localhost to join a room');
+    return;
+  }
+  try {
+    let res = await fetch('/api/rooms/' + code);
+    roomState = await res.json();
+    activeRoomId = roomState.id;
+    roomCode = activeRoomId;
+    pendingJoinCode = roomCode;
+    selectedMode = roomState.mode || selectedMode;
+    selectedJoinColor = firstOpenColor();
+    history.replaceState(null, '', '?room=' + activeRoomId);
+    connectRoomEvents(activeRoomId);
+    lobbyState = 'setup-join-name';
+    renderClassicSetup();
+  } catch (err) {
+    updateRoomStatus('Could not load room');
+  }
+}
+
 async function createClassicRoom() {
   if (location.protocol === 'file:') {
     updateRoomStatus('Open with npm start and use localhost to create a room');
     return;
   }
-  let res = await fetch('/api/rooms', { method: 'POST' });
-  roomState = await res.json();
-  activeRoomId = roomState.id;
-  history.replaceState(null, '', '?room=' + activeRoomId);
-  connectRoomEvents(activeRoomId);
-  renderClassicSetup();
+  let input = document.getElementById('joinName');
+  let name = (input && input.value || '').trim();
+  if (!name) {
+    updateRoomStatus('Type your name first');
+    if (input) input.focus();
+    return;
+  }
+  try {
+    let res = await fetch('/api/rooms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: selectedMode })
+    });
+    roomState = await res.json();
+    activeRoomId = roomState.id;
+    roomCode = activeRoomId;
+    history.replaceState(null, '', '?room=' + activeRoomId);
+    connectRoomEvents(activeRoomId);
+    await joinRoomAsPlayer(name, selectedJoinColor);
+    isHost = true;
+    lobbyState = 'lobby-host';
+    renderClassicSetup();
+  } catch (err) {
+    updateRoomStatus('Could not create room');
+  }
 }
 
 async function joinClassicRoom() {
-  if (!activeRoomId) await createClassicRoom();
   let input = document.getElementById('joinName');
   let name = (input.value || '').trim();
   if (!name) {
@@ -542,21 +671,34 @@ async function joinClassicRoom() {
     input.focus();
     return;
   }
+  if (!activeRoomId) {
+    updateRoomStatus('Enter a room code first');
+    return;
+  }
+  let ok = await joinRoomAsPlayer(name, selectedJoinColor);
+  if (!ok) return;
+  isHost = roomState && roomState.hostId === localPlayerId;
+  lobbyState = isHost ? 'lobby-host' : 'lobby-guest';
+  renderClassicSetup();
+}
+
+async function joinRoomAsPlayer(name, colorId) {
   let res = await fetch('/api/rooms/' + activeRoomId + '/join', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, colorId: selectedJoinColor, playerId: localPlayerId })
+    body: JSON.stringify({ name, colorId, playerId: localPlayerId })
   });
   let data = await res.json();
   if (!res.ok || !data.ok) {
     updateRoomStatus(data.error || 'Could not join room');
-    return;
+    return false;
   }
   localPlayerId = data.playerId;
   localStorage.setItem('flickItPlayerId', localPlayerId);
   roomState = data.room;
   connectRoomEvents(activeRoomId);
-  renderClassicSetup();
+  syncLobbySnapshot();
+  return true;
 }
 
 async function startRoomGame() {
@@ -574,7 +716,32 @@ async function startRoomGame() {
     updateRoomStatus(data.error || 'Could not start game');
     return;
   }
-  beginClassicFromRoom(data.room);
+  beginRoomGame(data.room);
+}
+
+async function leaveRoom() {
+  if (activeRoomId && localPlayerId && location.protocol !== 'file:') {
+    try {
+      await fetch('/api/rooms/' + activeRoomId + '/leave', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId: localPlayerId })
+      });
+    } catch (err) {}
+  }
+  if (roomEvents) roomEvents.close();
+  roomEvents = null;
+  history.replaceState(null, '', location.pathname);
+  showLobbyChoice();
+}
+
+function beginRoomGame(room) {
+  document.body.classList.remove('lobby-open');
+  if ((room && room.mode) === 'battle') {
+    startBattleGame();
+    return;
+  }
+  beginClassicFromRoom(room);
 }
 
 function beginClassicFromRoom(room) {
@@ -603,12 +770,13 @@ function connectRoomEvents(roomId) {
   roomEvents.addEventListener('room', event => {
     try {
       roomState = JSON.parse(event.data);
+      syncLobbySnapshot();
       renderClassicSetup();
-      if (roomState.started && gameState !== 'play') beginClassicFromRoom(roomState);
+      if (roomState.started && gameState !== 'play') beginRoomGame(roomState);
     } catch (err) {}
   });
   roomEvents.addEventListener('start', event => {
-    try { beginClassicFromRoom(JSON.parse(event.data)); } catch (err) {}
+    try { beginRoomGame(JSON.parse(event.data)); } catch (err) {}
   });
   roomEvents.addEventListener('history', event => {
     try {
@@ -632,34 +800,89 @@ function openRoomFromUrl() {
   let id = new URLSearchParams(location.search).get('room');
   if (!id) return;
   selectedMode = 'classic';
-  activeRoomId = id.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+  activeRoomId = id.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+  roomCode = activeRoomId;
+  pendingJoinCode = activeRoomId;
+  lobbyState = 'setup-join-name';
+  document.body.classList.add('lobby-open');
   document.getElementById('menu').style.display = 'none';
   document.getElementById('classicSetup').style.display = 'flex';
   connectRoomEvents(activeRoomId);
   fetch('/api/rooms/' + activeRoomId).then(r => r.json()).then(room => {
     roomState = room;
+    selectedMode = room.mode || 'classic';
+    selectedJoinColor = firstOpenColor();
     renderClassicSetup();
   }).catch(() => updateRoomStatus('Could not load room'));
 }
 
 function roomUrl(id) {
-  return location.origin + location.pathname + '?room=' + id;
+  let origin = location.origin && location.origin !== 'null' ? location.origin : 'https://yourdomain.com';
+  return origin + location.pathname + '?room=' + id;
 }
 
 async function copyRoomLink() {
-  let link = document.getElementById('roomLink').value;
+  let link = roomUrl(roomCode || activeRoomId);
   if (!link) return;
   try {
     await navigator.clipboard.writeText(link);
-    updateRoomStatus('Room link copied');
+    updateRoomStatus('Copied!');
   } catch (err) {
     updateRoomStatus(link);
   }
+  clearTimeout(copiedTimer);
+  copiedTimer = setTimeout(() => updateRoomStatus(''), 1400);
 }
 
 function updateRoomStatus(text) {
   let status = document.getElementById('roomStatus');
   if (status) status.innerText = text || '';
+}
+
+function syncLobbySnapshot() {
+  roomCode = activeRoomId || (roomState && roomState.id) || roomCode;
+  playersList = roomState && Array.isArray(roomState.players) ? roomState.players.slice() : [];
+  isHost = !!(roomState && roomState.hostId && roomState.hostId === localPlayerId);
+  if ((lobbyState === 'lobby-host' || lobbyState === 'lobby-guest') && roomState) {
+    lobbyState = isHost ? 'lobby-host' : 'lobby-guest';
+  }
+}
+
+function firstOpenColor() {
+  let taken = roomState ? roomState.players.map(p => p.colorId) : [];
+  let open = CLASSIC_COLORS.find(c => !taken.includes(c.id));
+  return open ? open.id : CLASSIC_COLORS[0].id;
+}
+
+function renderLobbyView(card) {
+  let playersHtml = playersList.map(player => {
+    let color = CLASSIC_COLORS.find(c => c.id === player.colorId) || CLASSIC_COLORS[0];
+    let hostBadge = roomState && roomState.hostId === player.id ? '<span class="room-badge">HOST</span>' : '';
+    let youBadge = player.id === localPlayerId ? '<span class="room-badge">you</span>' : '';
+    return `<div class="room-player-row">
+      <div class="room-player-dot" style="background:${color.hex}"></div>
+      <div class="room-player-name">${escapeHtml(player.name)}</div>
+      ${youBadge}${hostBadge}
+    </div>`;
+  }).join('') || '<div class="setup-sub">Waiting for players</div>';
+  let hostControls = isHost
+    ? `<button onclick="startRoomGame()" ${playersList.length >= 2 ? '' : 'disabled'}>Start Game ▶</button>`
+    : '<div class="setup-sub">Waiting for host to start...</div>';
+  card.innerHTML = `
+    <h2>WAITING FOR PLAYERS</h2>
+    <div class="room-code-row">
+      <span>Room Code:</span>
+      <span class="room-code">${escapeHtml(roomCode)}</span>
+      ${isHost ? '<button class="soft-btn" onclick="copyRoomLink()">Copy Link</button>' : ''}
+    </div>
+    <div class="setup-sub" style="margin-bottom:6px;text-align:left;">Players:</div>
+    <div class="room-player-list">${playersHtml}</div>
+    <div class="setup-sub">${playersList.length}/5 players ready</div>
+    <div class="setup-actions">
+      ${hostControls}
+      <button class="soft-btn" onclick="leaveRoom()">Leave Room</button>
+    </div>
+    <div id="roomStatus" class="room-status"></div>`;
 }
 
 function escapeHtml(text) {
@@ -1622,10 +1845,11 @@ async function publishRoomEvent(type, payload) {
   let path = type === 'reaction' ? '/reaction' : '/chat';
   if (location.protocol !== 'file:') {
     try {
+      let eventPayload = Object.assign({}, payload, activeRoomId ? { roomId: activeRoomId } : {});
       let res = await fetch(path, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(eventPayload)
       });
       if (res.ok) return;
     } catch (err) {}

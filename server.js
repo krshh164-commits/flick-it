@@ -36,7 +36,8 @@ app.get('/events', (req, res) => {
 });
 
 app.post('/api/rooms', (req, res) => {
-  const room = createRoom();
+  const mode = String(req.body?.mode || 'classic') === 'battle' ? 'battle' : 'classic';
+  const room = createRoom(mode);
   res.json(publicRoom(room));
 });
 
@@ -73,11 +74,23 @@ app.post('/api/rooms/:roomId/join', (req, res) => {
 
 app.post('/api/rooms/:roomId/start', (req, res) => {
   const room = getRoom(req.params.roomId);
+  const playerId = String(req.body?.playerId || '').trim();
+  if (room.hostId && room.hostId !== playerId) return res.status(403).json({ ok: false, error: 'Only host can start' });
   if (room.players.length < 2) return res.status(409).json({ ok: false, error: 'Need at least 2 players' });
   room.started = true;
   room.seed = Date.now();
   broadcastRoom(room.id, 'room', publicRoom(room));
   broadcastRoom(room.id, 'start', publicRoom(room));
+  res.json({ ok: true, room: publicRoom(room) });
+});
+
+app.post('/api/rooms/:roomId/leave', (req, res) => {
+  const room = getRoom(req.params.roomId);
+  const playerId = String(req.body?.playerId || '').trim();
+  const before = room.players.length;
+  room.players = room.players.filter(p => p.id !== playerId);
+  if (room.hostId === playerId) room.hostId = room.players[0]?.id || null;
+  if (before !== room.players.length) broadcastRoom(room.id, 'room', publicRoom(room));
   res.json({ ok: true, room: publicRoom(room) });
 });
 
@@ -129,23 +142,23 @@ function broadcast(event, data) {
   for (const client of clients) client.write(payload);
 }
 
-function createRoom() {
+function createRoom(mode = 'classic') {
   let id;
-  do { id = Math.random().toString(36).slice(2, 6).toUpperCase(); }
+  do { id = Math.random().toString(36).slice(2, 8).toUpperCase(); }
   while (rooms.has(id));
-  const room = { id, hostId: null, started: false, seed: Date.now(), players: [], chatHistory: [] };
+  const room = { id, mode, hostId: null, started: false, seed: Date.now(), players: [], chatHistory: [] };
   rooms.set(id, room);
   return room;
 }
 
 function getRoom(id) {
   const clean = cleanRoomId(id) || createRoom().id;
-  if (!rooms.has(clean)) rooms.set(clean, { id: clean, hostId: null, started: false, seed: Date.now(), players: [], chatHistory: [] });
+  if (!rooms.has(clean)) rooms.set(clean, { id: clean, mode: 'classic', hostId: null, started: false, seed: Date.now(), players: [], chatHistory: [] });
   return rooms.get(clean);
 }
 
 function cleanRoomId(value) {
-  const id = String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+  const id = String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
   return id || '';
 }
 
@@ -156,6 +169,7 @@ function makePlayerId() {
 function publicRoom(room) {
   return {
     id: room.id,
+    mode: room.mode || 'classic',
     hostId: room.hostId,
     started: room.started,
     seed: room.seed,
