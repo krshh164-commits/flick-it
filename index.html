@@ -4,19 +4,25 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Flick It!</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖊️</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Pangolin&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet">
 <style>
   * { margin:0;padding:0;box-sizing:border-box; }
   body { background:#222; overflow:hidden; font-family:'Pangolin',cursive; }
   canvas { display:block;transition:filter 0.2s; }
   body.lobby-open canvas { filter:blur(8px); }
+  button { font-family:'Nunito',sans-serif; }
+  h1,h2,h3,#menu h1,#classicSetup h2,.lobby-card h2,.mode-name {
+    font-family:'Nunito',sans-serif;font-weight:900;letter-spacing:2px;
+  }
 
   #menu {
     position:fixed;inset:0;display:flex;flex-direction:column;
     align-items:center;justify-content:center;
     background:rgba(20,20,20,0.96);z-index:30;
   }
-  #menu h1 { font-size:52px;font-weight:900;color:#eee;letter-spacing:6px;margin-bottom:6px; }
+  #menu h1 { font-size:52px;color:#eee;letter-spacing:4px;margin-bottom:6px; }
   #menu .sub { color:#888;font-size:14px;margin-bottom:10px; }
   #menu .inst { color:#aaa;font-size:13px;margin-bottom:38px;text-align:center;line-height:2;max-width:320px; }
   .mode-row { display:flex;gap:18px;margin:18px 0 24px; }
@@ -27,13 +33,12 @@
   }
   .mode-card:hover { transform:translateY(-3px);background:rgba(255,255,255,0.09); }
   .mode-card.selected { border-color:#c0392b;background:rgba(192,57,43,0.18); }
-  .mode-name { font-size:20px;font-weight:900;letter-spacing:2px;margin-bottom:7px; }
+  .mode-name { font-size:20px;margin-bottom:7px; }
   .mode-desc { font-size:12px;color:#aaa;line-height:1.5; }
   #menu button,
   #classicSetup button,
   #resetBtn,
   #winScreen button {
-    font-family:'Pangolin',cursive;
     background:#c0392b;color:#fff;border:none;border-radius:50px;
     cursor:pointer;letter-spacing:2px;text-align:center;
     box-shadow:0 4px 20px rgba(192,57,43,0.5);
@@ -52,7 +57,7 @@
     border:1px solid rgba(255,255,255,0.12);box-shadow:0 22px 80px rgba(0,0,0,0.55);
     padding:26px;color:#eee;text-align:center;
   }
-  #classicSetup h2 { color:#eee;font-size:29px;letter-spacing:3px;margin-bottom:8px; }
+  #classicSetup h2 { color:#eee;font-size:29px;margin-bottom:8px; }
   #classicSetup .setup-sub { color:#aaa;font-size:13px;margin-bottom:20px;line-height:1.45; }
   .lobby-field {
     width:100%;padding:11px 13px;border-radius:8px;outline:none;margin-bottom:14px;
@@ -71,7 +76,7 @@
   .swatch.disabled:hover { transform:none; }
   .lobby-swatches { justify-content:center;margin:2px 0 18px;flex-wrap:wrap; }
   .room-code-row { display:flex;align-items:center;justify-content:center;gap:10px;margin:10px 0 18px;color:#ddd;font-size:16px; }
-  .room-code { color:#fff;font-size:22px;letter-spacing:3px;font-weight:900; }
+  .room-code { color:#fff;font-family:'Nunito',sans-serif;font-size:24px;letter-spacing:4px;font-weight:900; }
   .room-status { color:#aaa;font-size:13px;min-height:18px;text-align:center;margin-top:12px; }
   .room-player-list {
     max-height:220px;overflow:auto;margin:10px 0 14px;padding:5px;
@@ -92,9 +97,26 @@
   #classicSetup .setup-actions { display:flex;gap:12px;margin-top:18px;align-items:center;justify-content:center;flex-wrap:wrap; }
   #classicSetup button { padding:10px 24px;font-size:14px;font-weight:800;box-shadow:0 4px 16px rgba(192,57,43,0.35); }
   #classicSetup .soft-btn { background:rgba(255,255,255,0.09);box-shadow:none;color:#ddd; }
+  #classicSetup .join-btn { background:#1a7a4a;box-shadow:0 4px 16px rgba(26,122,74,0.35); }
+  #classicSetup .join-btn:hover { background:#20955a; }
+  #classicSetup .start-btn { background:#1a5fa8;box-shadow:0 4px 16px rgba(26,95,168,0.35); }
+  #classicSetup .start-btn:hover { background:#2474c7; }
   #classicSetup button:disabled { opacity:0.38;cursor:not-allowed;transform:none;background:#7d3029; }
+  #classicSetup button:disabled:hover { opacity:0.38;transform:none;background:#7d3029; }
   #classicSetup button:hover { transform:scale(1.04);background:#d04435; }
   #classicSetup .soft-btn:hover { background:rgba(255,255,255,0.16); }
+  .waiting-ellipsis::after { content:'';animation:ellipsis 1.2s steps(4,end) infinite; }
+  @keyframes ellipsis {
+    0% { content:''; }
+    25% { content:'.'; }
+    50% { content:'..'; }
+    75%,100% { content:'...'; }
+  }
+  @keyframes slideUp {
+    from { opacity:0;transform:translateY(24px); }
+    to { opacity:1;transform:translateY(0); }
+  }
+  .lobby-card { animation:slideUp 0.25s ease; }
 
   #hud {
     position:fixed;top:0;left:0;right:0;height:64px;
@@ -118,6 +140,12 @@
   #turnBanner {
     display:flex;align-items:center;gap:10px;
     background:rgba(0,0,0,0.5);border-radius:10px;padding:8px 20px;
+  }
+  #turnBanner.turn-pulse { animation:turnPulse 1.5s ease; }
+  @keyframes turnPulse {
+    0% { box-shadow:0 0 0 rgba(255,255,255,0); }
+    35% { box-shadow:0 0 22px var(--turn-color, rgba(255,255,255,0.45)); }
+    100% { box-shadow:0 0 0 rgba(255,255,255,0); }
   }
   #turnDot  { width:16px;height:16px;border-radius:50%;transition:background 0.3s; }
   #turnText { font-size:13px;font-weight:700;color:#eee;letter-spacing:1px; }
@@ -155,7 +183,7 @@
     border-radius:8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);
     transition:opacity 0.25s,filter 0.25s,background 0.25s,border-color 0.25s;
   }
-  .player-list-row.active { background:rgba(255,255,255,0.12);border-color:rgba(255,255,255,0.24); }
+  .player-list-row.active { background:rgba(255,255,255,0.16);border-color:rgba(255,255,255,0.28);border-left-width:3px; }
   .player-list-row.eliminated { opacity:0.35;filter:grayscale(1); }
   .player-dot { width:11px;height:11px;border-radius:50%;flex-shrink:0; }
   .player-name { flex:1;color:#ddd;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
@@ -233,11 +261,11 @@
   </div>
   <div class="mode-row">
     <div class="mode-card selected" id="modeBattle" onclick="selectMode('battle')">
-      <div class="mode-name">BATTLE</div>
+      <div class="mode-name">⚔️ BATTLE</div>
       <div class="mode-desc">Black vs Blue<br>different pen weights</div>
     </div>
     <div class="mode-card" id="modeClassic" onclick="selectMode('classic')">
-      <div class="mode-name">CLASSIC</div>
+      <div class="mode-name">🖊️ CLASSIC</div>
       <div class="mode-desc">2-5 players<br>same pen, different colours</div>
     </div>
   </div>
@@ -252,7 +280,7 @@
 <div id="hud">
   <div class="score-panel" id="panelBlack" style="color:#dddddd;">
     <div class="score-dot" style="background:#111;"></div>
-    <div class="score-name" style="color:#dddddd;">BLACK</div>
+    <div class="score-name" id="scoreNameBlack" style="color:#dddddd;">BLACK</div>
     <div class="score-num" id="scoreBlack" style="color:#dddddd;">0</div>
   </div>
   <div id="turnBanner">
@@ -262,7 +290,7 @@
   </div>
   <div class="score-panel" id="panelBlue" style="color:#5588cc;">
     <div class="score-num" id="scoreBlue" style="color:#5588cc;">0</div>
-    <div class="score-name" style="color:#5588cc;">BLUE</div>
+    <div class="score-name" id="scoreNameBlue" style="color:#5588cc;">BLUE</div>
     <div class="score-dot" style="background:#2980b9;"></div>
   </div>
 </div>
@@ -358,6 +386,7 @@ let selectedMode = 'battle';
 let gameMode     = 'battle';
 let scores       = { black: 0, blue: 0 };
 let currentTurn  = 'black';
+let currentTurnPlayerId = '';
 let penImgs      = { black: [], blue: [] };
 let classicImgs  = {};
 let classicSetupPlayers = [
@@ -377,6 +406,9 @@ let playersList = [];
 let selectedJoinColor = 'red';
 let pendingJoinCode = '';
 let copiedTimer = null;
+let myName = localStorage.getItem('flickItPlayerName') || '';
+let myColor = localStorage.getItem('flickItPlayerColor') || '#eee';
+let lastTurnPulseKey = '';
 let pendingWinner= null;
 let pendingLeft  = { black: 0, blue: 0 };
 let chatMessages = [];
@@ -434,10 +466,10 @@ function windowResized() {
 }
 
 function computePlat() {
-  platW = min(width  * 0.72, 820);
-  platH = min(height * 0.72, 680);
+  platW = min(width  * 0.88, 1040);
+  platH = min(height - 132, height * 0.84, 760);
   platX = (width  - platW) / 2;
-  platY = (height - platH) / 2 + 24;
+  platY = max(72, (height - platH) / 2 + 18);
 }
 
 function selectMode(mode) {
@@ -470,7 +502,7 @@ function renderClassicSetup() {
       <div class="setup-sub">Create a private room or join with a room code.</div>
       <div class="lobby-choice">
         <button onclick="showCreateSetup()">Create Game</button>
-        <button onclick="showJoinCodeSetup()">Join Game</button>
+        <button class="join-btn" onclick="showJoinCodeSetup()">Join Game</button>
       </div>
       <div class="setup-actions"><button class="soft-btn" onclick="backToMenu()">Cancel</button></div>
       <div id="roomStatus" class="room-status"></div>`;
@@ -480,7 +512,7 @@ function renderClassicSetup() {
     card.innerHTML = `
       <h2>CREATE GAME</h2>
       <div class="setup-sub">${selectedMode.toUpperCase()} room setup</div>
-      <input id="joinName" class="lobby-field" maxlength="14" placeholder="Your name" autocomplete="off">
+      <input id="joinName" class="lobby-field" maxlength="14" placeholder="Your name" autocomplete="off" value="${escapeHtml(myName)}">
       <div class="color-swatches lobby-swatches" id="joinSwatches"></div>
       <div class="setup-actions">
         <button onclick="createClassicRoom()">Create</button>
@@ -496,7 +528,7 @@ function renderClassicSetup() {
       <div class="setup-sub">Enter the room code from the host.</div>
       <input id="roomCodeInput" class="lobby-field" maxlength="6" placeholder="ROOM CODE" autocomplete="off" oninput="formatRoomCodeInput(this)" onkeydown="handleJoinCodeKey(event)">
       <div class="setup-actions">
-        <button onclick="loadJoinRoom()">Next</button>
+        <button class="join-btn" onclick="loadJoinRoom()">Next</button>
         <button class="soft-btn" onclick="showLobbyChoice()">Cancel</button>
       </div>
       <div id="roomStatus" class="room-status"></div>`;
@@ -509,10 +541,10 @@ function renderClassicSetup() {
     card.innerHTML = `
       <h2>JOIN GAME</h2>
       <div class="setup-sub">Room ${escapeHtml(roomCode)} is ready. Pick a name and an available colour.</div>
-      <input id="joinName" class="lobby-field" maxlength="14" placeholder="Your name" autocomplete="off">
+      <input id="joinName" class="lobby-field" maxlength="14" placeholder="Your name" autocomplete="off" value="${escapeHtml(myName)}">
       <div class="color-swatches lobby-swatches" id="joinSwatches"></div>
       <div class="setup-actions">
-        <button onclick="joinClassicRoom()">Join</button>
+        <button class="join-btn" onclick="joinClassicRoom()">Join</button>
         <button class="soft-btn" onclick="showJoinCodeSetup()">Cancel</button>
       </div>
       <div id="roomStatus" class="room-status"></div>`;
@@ -695,6 +727,11 @@ async function joinRoomAsPlayer(name, colorId) {
   }
   localPlayerId = data.playerId;
   localStorage.setItem('flickItPlayerId', localPlayerId);
+  myName = name;
+  let chosen = CLASSIC_COLORS.find(c => c.id === colorId) || CLASSIC_COLORS[0];
+  myColor = chosen.light || chosen.hex;
+  localStorage.setItem('flickItPlayerName', myName);
+  localStorage.setItem('flickItPlayerColor', myColor);
   roomState = data.room;
   connectRoomEvents(activeRoomId);
   syncLobbySnapshot();
@@ -821,17 +858,30 @@ function roomUrl(id) {
   return origin + location.pathname + '?room=' + id;
 }
 
-async function copyRoomLink() {
+async function copyRoomCode(button) {
+  await copyLobbyText(roomCode || activeRoomId, button);
+}
+
+async function copyRoomLink(button) {
   let link = roomUrl(roomCode || activeRoomId);
-  if (!link) return;
+  await copyLobbyText(link, button);
+}
+
+async function copyLobbyText(text, button) {
+  if (!text) return;
+  let original = button ? button.innerText : '';
   try {
-    await navigator.clipboard.writeText(link);
+    await navigator.clipboard.writeText(text);
     updateRoomStatus('Copied!');
   } catch (err) {
-    updateRoomStatus(link);
+    updateRoomStatus(text);
   }
+  if (button) button.innerText = 'Copied!';
   clearTimeout(copiedTimer);
-  copiedTimer = setTimeout(() => updateRoomStatus(''), 1400);
+  copiedTimer = setTimeout(() => {
+    updateRoomStatus('');
+    if (button) button.innerText = original;
+  }, 1500);
 }
 
 function updateRoomStatus(text) {
@@ -842,6 +892,7 @@ function updateRoomStatus(text) {
 function syncLobbySnapshot() {
   roomCode = activeRoomId || (roomState && roomState.id) || roomCode;
   playersList = roomState && Array.isArray(roomState.players) ? roomState.players.slice() : [];
+  if (roomState && roomState.currentTurnId) currentTurnPlayerId = roomState.currentTurnId;
   isHost = !!(roomState && roomState.hostId && roomState.hostId === localPlayerId);
   if ((lobbyState === 'lobby-host' || lobbyState === 'lobby-guest') && roomState) {
     lobbyState = isHost ? 'lobby-host' : 'lobby-guest';
@@ -864,16 +915,17 @@ function renderLobbyView(card) {
       <div class="room-player-name">${escapeHtml(player.name)}</div>
       ${youBadge}${hostBadge}
     </div>`;
-  }).join('') || '<div class="setup-sub">Waiting for players</div>';
+  }).join('') || '<div class="setup-sub waiting-ellipsis">Waiting for players</div>';
   let hostControls = isHost
-    ? `<button onclick="startRoomGame()" ${playersList.length >= 2 ? '' : 'disabled'}>Start Game ▶</button>`
+    ? `<button class="start-btn" onclick="startRoomGame()" ${playersList.length >= 2 ? '' : 'disabled'}>Start Game ▶</button>`
     : '<div class="setup-sub">Waiting for host to start...</div>';
   card.innerHTML = `
     <h2>WAITING FOR PLAYERS</h2>
     <div class="room-code-row">
       <span>Room Code:</span>
       <span class="room-code">${escapeHtml(roomCode)}</span>
-      ${isHost ? '<button class="soft-btn" onclick="copyRoomLink()">Copy Link</button>' : ''}
+      <button class="soft-btn" onclick="copyRoomCode(this)">Copy Code</button>
+      <button class="soft-btn" onclick="copyRoomLink(this)">Copy Link</button>
     </div>
     <div class="setup-sub" style="margin-bottom:6px;text-align:left;">Players:</div>
     <div class="room-player-list">${playersHtml}</div>
@@ -901,15 +953,18 @@ function initGame() {
   if (gameMode === 'battle') {
     scores      = { black: 0, blue: 0 };
     currentTurn = 'black';
+    currentTurnPlayerId = roomState && roomState.players && roomState.players[0] ? roomState.players[0].id : '';
     pendingLeft = { black: STICKS_PER, blue: STICKS_PER };
   } else {
     classicPlayers.forEach(p => p.eliminated = false);
     classicTurnIndex = 0;
     currentTurn = classicPlayers[0] ? classicPlayers[0].team : '';
+    currentTurnPlayerId = classicPlayers[0] ? classicPlayers[0].id || '' : '';
     pendingLeft = {};
   }
   pendingWinner = null;
   firstMoveDone = false;
+  lastTurnPulseKey = '';
 
   placeSticks();
 
@@ -1106,6 +1161,7 @@ function drawArrow(origin, pull) {
 // ── INPUT ─────────────────────────────────────────────────────────────────────
 function mousePressed() {
   if (gameState !== 'play') return;
+  if (!canLocalControlTurn()) return;
   for (let s of sticks) {
     if (!s.gone && s.team === currentTurn && s.hit(mouseX, mouseY)) {
       selected  = s;
@@ -1114,6 +1170,19 @@ function mousePressed() {
       break;
     }
   }
+}
+
+function canLocalControlTurn() {
+  if (!activeRoomId || !localPlayerId) return true;
+  if (gameMode === 'classic') {
+    let player = classicPlayers[classicTurnIndex];
+    return !!player && (currentTurnPlayerId || player.id) === localPlayerId;
+  }
+  if (gameMode === 'battle' && roomState && roomState.players && roomState.players.length >= 2) {
+    let activePlayer = currentTurn === 'black' ? roomState.players[0] : roomState.players[1];
+    return !!activePlayer && activePlayer.id === localPlayerId;
+  }
+  return true;
 }
 
 function mouseReleased() {
@@ -1146,9 +1215,23 @@ function mouseReleased() {
   dragStart = null;
 }
 
+function touchStarted(event) {
+  if (event && event.target && event.target.tagName !== 'CANVAS') return true;
+  mousePressed();
+  return false;
+}
+
+function touchEnded(event) {
+  if (event && event.target && event.target.tagName !== 'CANVAS') return true;
+  mouseReleased();
+  return false;
+}
+
 function switchTurn() {
   if (gameMode === 'battle') {
     currentTurn = currentTurn === 'black' ? 'blue' : 'black';
+    let activePlayer = roomState && roomState.players ? (currentTurn === 'black' ? roomState.players[0] : roomState.players[1]) : null;
+    currentTurnPlayerId = activePlayer ? activePlayer.id : '';
   } else {
     let total = classicPlayers.length;
     let tries = 0;
@@ -1157,6 +1240,7 @@ function switchTurn() {
       tries++;
     } while (classicPlayers[classicTurnIndex].eliminated && tries < total);
     currentTurn = classicPlayers[classicTurnIndex] ? classicPlayers[classicTurnIndex].team : '';
+    currentTurnPlayerId = classicPlayers[classicTurnIndex] ? classicPlayers[classicTurnIndex].id || '' : '';
   }
   updateHUD();
   startTurnTimer();
@@ -1427,7 +1511,7 @@ class Stick {
     rectMode(CENTER);
 
     // Shadow
-    noStroke(); fill(0, 0, 0, 35 * (fallAlpha / 255));
+    noStroke(); fill(0, 0, 0, 28 * (fallAlpha / 255));
     rect(4, 6, PEN_DRAW_W * 0.95, PEN_DRAW_H * 0.55, PEN_DRAW_H * 0.28);
 
     tint(255, fallAlpha);
@@ -1602,11 +1686,14 @@ function updateHUD() {
     document.getElementById('scoreBlue').innerText  = scores.blue;
 
     let isBlack = currentTurn === 'black';
+    let blackName = getBattlePlayerName('black');
+    let blueName = getBattlePlayerName('blue');
     document.getElementById('turnDot').style.background = isBlack ? '#555' : BLUE_COL;
-    document.getElementById('turnText').innerText        = isBlack ? "BLACK'S TURN" : "BLUE'S TURN";
+    document.getElementById('turnText').innerText        = (isBlack ? blackName : blueName).toUpperCase() + "'S TURN";
 
     document.getElementById('panelBlack').classList.toggle('active-panel', isBlack);
     document.getElementById('panelBlue').classList.toggle('active-panel', !isBlack);
+    pulseTurnBanner(isBlack ? BLACK_LIGHT : BLUE_LIGHT, currentTurn);
     return;
   }
 
@@ -1618,11 +1705,38 @@ function updateHUD() {
       tries++;
     } while (classicPlayers[classicTurnIndex].eliminated && tries < total);
     currentTurn = classicPlayers[classicTurnIndex] ? classicPlayers[classicTurnIndex].team : '';
+    currentTurnPlayerId = classicPlayers[classicTurnIndex] ? classicPlayers[classicTurnIndex].id || '' : '';
   }
   let player = classicPlayers[classicTurnIndex];
   document.getElementById('turnDot').style.background = player ? player.hex : '#888';
   document.getElementById('turnText').innerText = player ? player.name.toUpperCase() + "'S TURN" : '';
+  pulseTurnBanner(player ? player.light : '#888', player ? player.id || player.team : '');
   buildPlayerList();
+}
+
+function updateBattleScoreNames() {
+  let blackName = document.getElementById('scoreNameBlack');
+  let blueName = document.getElementById('scoreNameBlue');
+  if (blackName) blackName.innerText = getBattlePlayerName('black').toUpperCase();
+  if (blueName) blueName.innerText = getBattlePlayerName('blue').toUpperCase();
+}
+
+function getBattlePlayerName(team) {
+  if (roomState && roomState.players && roomState.players.length) {
+    let player = team === 'black' ? roomState.players[0] : roomState.players[1];
+    if (player && player.name) return player.name;
+  }
+  return team === 'black' ? 'Black' : 'Blue';
+}
+
+function pulseTurnBanner(colorValue, key) {
+  let banner = document.getElementById('turnBanner');
+  if (!banner || !key || lastTurnPulseKey === key) return;
+  lastTurnPulseKey = key;
+  banner.style.setProperty('--turn-color', colorValue);
+  banner.classList.remove('turn-pulse');
+  void banner.offsetWidth;
+  banner.classList.add('turn-pulse');
 }
 
 function checkWin() {
@@ -1689,24 +1803,27 @@ function startBattleGame() {
   document.getElementById('chatPanel').style.display = 'block';
   document.getElementById('resetBtn').style.display= 'block';
   gameState = 'play';
+  updateBattleScoreNames();
   initGame();
 }
 
-function startClassicGame() {
+function startClassicGame(fromRoom = false) {
   gameMode = 'classic';
   clearChat();
-  classicPlayers = classicSetupPlayers.map((p, i) => {
-    let color = CLASSIC_COLORS.find(c => c.id === p.colorId) || CLASSIC_COLORS[i];
-    return {
-      team: 'classic' + i,
-      name: (p.name || ('Player ' + (i + 1))).trim() || ('Player ' + (i + 1)),
-      colorId: color.id,
-      hex: color.hex,
-      light: color.light,
-      file: color.file,
-      eliminated: false
-    };
-  });
+  if (!fromRoom) {
+    classicPlayers = classicSetupPlayers.map((p, i) => {
+      let color = CLASSIC_COLORS.find(c => c.id === p.colorId) || CLASSIC_COLORS[i];
+      return {
+        team: 'classic' + i,
+        name: (p.name || ('Player ' + (i + 1))).trim() || ('Player ' + (i + 1)),
+        colorId: color.id,
+        hex: color.hex,
+        light: color.light,
+        file: color.file,
+        eliminated: false
+      };
+    });
+  }
   initSounds();
   document.getElementById('menu').style.display = 'none';
   document.getElementById('classicSetup').style.display = 'none';
@@ -1729,6 +1846,7 @@ function resetGame() {
 }
 
 function getCurrentChatPlayer() {
+  if (myName) return { name: myName, color: myColor || '#eee' };
   if (gameMode === 'classic') {
     let player = classicPlayers[classicTurnIndex];
     if (player) return { name: player.name, color: player.light };
@@ -1867,6 +1985,7 @@ function buildPlayerList() {
     row.className = 'player-list-row' +
       (i === classicTurnIndex && !p.eliminated ? ' active' : '') +
       (p.eliminated ? ' eliminated' : '');
+    if (i === classicTurnIndex && !p.eliminated) row.style.borderLeftColor = p.hex;
     row.innerHTML = `<div class="player-dot" style="background:${p.hex}"></div>
       <div class="player-name">${p.name}</div>
       <div class="player-count">${left}</div>`;
