@@ -283,8 +283,16 @@
     #turnTimer { font-size:10px;padding:1px 4px; }
 
     /* Panels: slide-over overlay, narrower */
-    #chatPanel { width:min(230px,80vw);top:50px; }
-    #playerSidebar { width:min(198px,72vw);top:50px; }
+    #chatPanel {
+      width:min(230px,80vw);top:50px;bottom:0;
+      display:flex;flex-direction:column;
+      padding-bottom:70px;
+    }
+    #chatMessages { flex:1;height:auto;min-height:0; }
+    #playerSidebar { width:min(198px,72vw);top:50px;bottom:0; }
+
+    /* Hide floating New Game on mobile — it lives inside the sidebar instead */
+    #resetBtn { display:none !important; }
 
     /* Canvas plat: account for no panels */
     canvas { touch-action:none; }
@@ -388,6 +396,7 @@
 <div id="playerSidebar">
   <h3>Players</h3>
   <div id="playerList"></div>
+  <button id="sidebarNewGameBtn" onclick="resetGame()" style="display:none;width:100%;margin-top:14px;padding:9px 0;font-size:13px;font-weight:800;border-radius:50px;border:none;background:#c0392b;color:#fff;cursor:pointer;letter-spacing:1px;box-shadow:0 4px 14px rgba(192,57,43,0.4);">New Game</button>
 </div>
 
 <div id="chatPanel">
@@ -510,6 +519,7 @@ let lastHitSoundFrame = -20;
 let firstMoveDone= false;
 let turnStartedAt = 0;
 let turnTouched = false;
+let gameStartFrame = 0;
 
 // ── PRELOAD ───────────────────────────────────────────────────────────────────
 function preload() {
@@ -892,12 +902,15 @@ function beginClassicFromRoom(room) {
   startClassicGame(true);
   // Restore stick positions if the game was already in progress
   if (room.sticksState && room.sticksState.length) {
-    applySticksState(room.sticksState);
-    classicPlayers.forEach(p => {
-      let teamSticks = sticks.filter(s => s.team === p.team);
-      if (teamSticks.length && teamSticks.every(s => s.gone)) p.eliminated = true;
-    });
-    updateHUD();
+    let anyAlive = room.sticksState.some(s => !s.gone);
+    if (anyAlive) {
+      applySticksState(room.sticksState);
+      classicPlayers.forEach(p => {
+        let teamSticks = sticks.filter(s => s.team === p.team);
+        if (teamSticks.length && teamSticks.every(s => s.gone)) p.eliminated = true;
+      });
+      updateHUD();
+    }
   }
 }
 
@@ -1124,6 +1137,7 @@ function initGame() {
   pendingWinner = null;
   firstMoveDone = isRoomCubeSpent();
   lastTurnPulseKey = '';
+  gameStartFrame = frameCount;
 
   placeSticks();
 
@@ -2053,6 +2067,7 @@ function pulseTurnBanner(colorValue, key) {
 }
 
 function checkWin() {
+  if (frameCount - gameStartFrame < 10) return;
   if (gameMode === 'battle') {
     let blackLeft = sticks.filter(s => s.team==='black' && !s.gone).length;
     let blueLeft  = sticks.filter(s => s.team==='blue'  && !s.gone).length;
@@ -2116,6 +2131,7 @@ function startBattleGame() {
   document.getElementById('playerSidebar').style.display = 'none';
   document.getElementById('chatPanel').style.display = 'block';
   document.getElementById('resetBtn').style.display= 'block';
+  if (isMobile()) document.getElementById('sidebarNewGameBtn').style.display = 'block';
   gameState = 'play';
   updateBattleScoreNames();
   initMobilePanels();
@@ -2150,16 +2166,26 @@ function startClassicGame(fromRoom = false) {
   document.getElementById('playerSidebar').style.display = 'block';
   document.getElementById('chatPanel').style.display = 'block';
   document.getElementById('resetBtn').style.display = 'block';
+  if (isMobile()) document.getElementById('sidebarNewGameBtn').style.display = 'block';
   gameState = 'play';
   initMobilePanels();
   initGame();
 }
 
-function resetGame() {
+async function resetGame() {
   document.getElementById('winScreen').style.display = 'none';
   gameState = 'play';
   clearChat();
   initGame();
+  if (activeRoomId && localPlayerId && location.protocol !== 'file:') {
+    try {
+      await fetch('/api/rooms/' + activeRoomId + '/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId: localPlayerId })
+      });
+    } catch (err) {}
+  }
 }
 
 function getCurrentChatPlayer() {

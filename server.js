@@ -82,6 +82,8 @@ app.post('/api/rooms/:roomId/start', (req, res) => {
   room.currentTurnId = room.players[0]?.id || null;
   room.currentTurnStartedAt = Date.now();
   room.cubeAvailable = true;
+  room.sticksState = null;
+  room.eliminatedPlayerIds = [];
   broadcastRoom(room.id, 'room', publicRoom(room));
   broadcastRoom(room.id, 'start', publicRoom(room));
   res.json({ ok: true, room: publicRoom(room) });
