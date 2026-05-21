@@ -155,11 +155,11 @@
   }
 
   #resetBtn {
-    position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+    position:fixed;bottom:18px;right:24px;
     padding:8px 28px;font-size:13px;font-weight:700;
     display:none;z-index:20;pointer-events:all;
   }
-  #resetBtn:hover { transform:translateX(-50%) scale(1.06);background:#d04435; }
+  #resetBtn:hover { transform:scale(1.06);background:#d04435; }
 
   #cubeOption {
     position:fixed;top:76px;right:24px;display:none;align-items:center;gap:9px;
@@ -225,7 +225,7 @@
   #chatInput:focus { border-color:rgba(255,255,255,0.35); }
   #chatSend {
     width:42px;border-radius:8px;border:none;background:#c0392b;color:#fff;
-    font-family:'Pangolin',cursive;font-weight:900;cursor:pointer;
+    font-size:18px;font-weight:900;cursor:pointer;
   }
   #reactionLayer {
     position:fixed;inset:0;z-index:24;pointer-events:none;overflow:hidden;
@@ -318,7 +318,7 @@
   </div>
   <div id="chatInputRow">
     <input id="chatInput" maxlength="80" placeholder="Type message" onkeydown="handleChatKey(event)">
-    <button id="chatSend" onclick="sendChatMessage()">Send</button>
+    <button id="chatSend" onclick="sendChatMessage()">➤</button>
   </div>
 </div>
 
@@ -800,11 +800,20 @@ function beginClassicFromRoom(room) {
       hex: color.hex,
       light: color.light,
       file: color.file,
-      eliminated: false
+      eliminated: !!(room.eliminatedPlayerIds && room.eliminatedPlayerIds.includes(p.id))
     };
   });
   randomSeed(room.seed || 1);
   startClassicGame(true);
+  // Restore stick positions if the game was already in progress
+  if (room.sticksState && room.sticksState.length) {
+    applySticksState(room.sticksState);
+    classicPlayers.forEach(p => {
+      let teamSticks = sticks.filter(s => s.team === p.team);
+      if (teamSticks.length && teamSticks.every(s => s.gone)) p.eliminated = true;
+    });
+    updateHUD();
+  }
 }
 
 function connectRoomEvents(roomId) {
@@ -844,24 +853,45 @@ function connectRoomEvents(roomId) {
   });
 }
 
-function openRoomFromUrl() {
+async function openRoomFromUrl() {
   let id = new URLSearchParams(location.search).get('room');
   if (!id) return;
   selectedMode = 'classic';
   activeRoomId = id.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
   roomCode = activeRoomId;
   pendingJoinCode = activeRoomId;
-  lobbyState = 'setup-join-name';
   document.body.classList.add('lobby-open');
   document.getElementById('menu').style.display = 'none';
   document.getElementById('classicSetup').style.display = 'flex';
   connectRoomEvents(activeRoomId);
-  fetch('/api/rooms/' + activeRoomId).then(r => r.json()).then(room => {
+  try {
+    let res = await fetch('/api/rooms/' + activeRoomId);
+    let room = await res.json();
     roomState = room;
     selectedMode = room.mode || 'classic';
+    // If we already have a player ID saved and it's in this room, auto-rejoin
+    let ourPlayer = localPlayerId ? room.players.find(p => p.id === localPlayerId) : null;
+    if (ourPlayer) {
+      myName = ourPlayer.name;
+      let chosen = CLASSIC_COLORS.find(c => c.id === ourPlayer.colorId) || CLASSIC_COLORS[0];
+      myColor = chosen.light || chosen.hex;
+      selectedJoinColor = ourPlayer.colorId;
+      isHost = room.hostId === localPlayerId;
+      if (room.started) {
+        document.body.classList.remove('lobby-open');
+        beginRoomGame(room);
+        return;
+      }
+      lobbyState = isHost ? 'lobby-host' : 'lobby-guest';
+      renderClassicSetup();
+      return;
+    }
     selectedJoinColor = firstOpenColor();
+    lobbyState = 'setup-join-name';
     renderClassicSetup();
-  }).catch(() => updateRoomStatus('Could not load room'));
+  } catch (err) {
+    updateRoomStatus('Could not load room');
+  }
 }
 
 function roomUrl(id) {
@@ -1290,7 +1320,7 @@ function mouseReleased() {
     spawnParticles(clickPt.x, clickPt.y, pull, selected.team);
     hideCubeOption();
     isLocalMotionAuthority = true;
-    publishGameEvent('drag-end', { sticks: serializeSticks() });
+    publishGameEvent('drag-end', { sticks: serializeSticks(), eliminatedPlayerIds: classicPlayers.filter(p => p.eliminated).map(p => p.id) });
     switchTurn();
   }
 
@@ -1381,7 +1411,7 @@ async function publishTurnState() {
 
 function publishDragMove() {
   if (!selected || !dragStart || !activeRoomId || !canLocalControlTurn()) return;
-  if (millis() - lastDragSentAt < 45) return;
+  if (millis() - lastDragSentAt < 25) return;
   lastDragSentAt = millis();
   let pull = p5.Vector.sub(dragStart, createVector(mouseX, mouseY));
   if (pull.mag() > MAX_DRAG) pull.setMag(MAX_DRAG);
@@ -1396,7 +1426,7 @@ function publishDragMove() {
 
 function publishMovingState() {
   if (!activeRoomId || !isLocalMotionAuthority || gameState !== 'play') return;
-  if (millis() - lastStateSentAt < 80) return;
+  if (millis() - lastStateSentAt < 45) return;
   let moving = sticks.some(s => !s.gone && (s.vel.mag() > 0.12 || abs(s.angVel) > 0.004 || abs(s.rollVel) > 0.004));
   let falling = sticks.some(s => s.gone && s.fallT < 1);
   if (!moving && !falling) {
@@ -1405,7 +1435,7 @@ function publishMovingState() {
     return;
   }
   lastStateSentAt = millis();
-  publishGameEvent('state', { sticks: serializeSticks() });
+  publishGameEvent('state', { sticks: serializeSticks(), eliminatedPlayerIds: classicPlayers.filter(p => p.eliminated).map(p => p.id) });
 }
 
 async function publishGameEvent(type, payload) {

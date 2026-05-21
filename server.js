@@ -113,10 +113,18 @@ app.post('/api/rooms/:roomId/game-event', (req, res) => {
   const type = String(req.body?.type || '').trim();
   if (!type) return res.status(400).json({ ok: false });
 
+  const payload = req.body?.payload || {};
+  if ((type === 'state' || type === 'drag-end') && payload.sticks) {
+    room.sticksState = payload.sticks;
+  }
+  if (Array.isArray(payload.eliminatedPlayerIds)) {
+    room.eliminatedPlayerIds = payload.eliminatedPlayerIds;
+  }
+
   broadcastRoom(room.id, 'game', {
     playerId,
     type,
-    payload: req.body?.payload || {},
+    payload,
     time: Date.now()
   });
   res.json({ ok: true });
@@ -184,14 +192,14 @@ function createRoom(mode = 'classic') {
   let id;
   do { id = Math.random().toString(36).slice(2, 8).toUpperCase(); }
   while (rooms.has(id));
-  const room = { id, mode, hostId: null, currentTurnId: null, currentTurnStartedAt: 0, cubeAvailable: true, started: false, seed: Date.now(), players: [], chatHistory: [] };
+  const room = { id, mode, hostId: null, currentTurnId: null, currentTurnStartedAt: 0, cubeAvailable: true, started: false, seed: Date.now(), players: [], chatHistory: [], sticksState: null, eliminatedPlayerIds: [] };
   rooms.set(id, room);
   return room;
 }
 
 function getRoom(id) {
   const clean = cleanRoomId(id) || createRoom().id;
-  if (!rooms.has(clean)) rooms.set(clean, { id: clean, mode: 'classic', hostId: null, currentTurnId: null, currentTurnStartedAt: 0, cubeAvailable: true, started: false, seed: Date.now(), players: [], chatHistory: [] });
+  if (!rooms.has(clean)) rooms.set(clean, { id: clean, mode: 'classic', hostId: null, currentTurnId: null, currentTurnStartedAt: 0, cubeAvailable: true, started: false, seed: Date.now(), players: [], chatHistory: [], sticksState: null, eliminatedPlayerIds: [] });
   return rooms.get(clean);
 }
 
@@ -214,7 +222,9 @@ function publicRoom(room) {
     cubeAvailable: room.cubeAvailable !== false,
     started: room.started,
     seed: room.seed,
-    players: room.players
+    players: room.players,
+    sticksState: room.sticksState || null,
+    eliminatedPlayerIds: room.eliminatedPlayerIds || []
   };
 }
 
