@@ -91,7 +91,7 @@ app.post('/api/rooms/:roomId/turn', (req, res) => {
   const room = getRoom(req.params.roomId);
   const playerId = String(req.body?.playerId || '').trim();
   if (!room.started) return res.status(409).json({ ok: false, error: 'Game not started' });
-  if (room.currentTurnId && room.currentTurnId !== playerId) return res.status(403).json({ ok: false, error: 'Not your turn' });
+  if (!room.players.some(p => p.id === playerId)) return res.status(403).json({ ok: false, error: 'Player not in room' });
 
   const nextTurnId = String(req.body?.nextTurnId || '').trim();
   if (nextTurnId && room.players.some(p => p.id === nextTurnId)) {
@@ -102,6 +102,24 @@ app.post('/api/rooms/:roomId/turn', (req, res) => {
 
   broadcastRoom(room.id, 'room', publicRoom(room));
   res.json({ ok: true, room: publicRoom(room) });
+});
+
+app.post('/api/rooms/:roomId/game-event', (req, res) => {
+  const room = getRoom(req.params.roomId);
+  const playerId = String(req.body?.playerId || '').trim();
+  if (!room.started) return res.status(409).json({ ok: false, error: 'Game not started' });
+  if (room.currentTurnId && room.currentTurnId !== playerId) return res.status(403).json({ ok: false, error: 'Not your turn' });
+
+  const type = String(req.body?.type || '').trim();
+  if (!type) return res.status(400).json({ ok: false });
+
+  broadcastRoom(room.id, 'game', {
+    playerId,
+    type,
+    payload: req.body?.payload || {},
+    time: Date.now()
+  });
+  res.json({ ok: true });
 });
 
 app.post('/api/rooms/:roomId/leave', (req, res) => {

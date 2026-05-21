@@ -389,6 +389,10 @@ let scores       = { black: 0, blue: 0 };
 let currentTurn  = 'black';
 let currentTurnPlayerId = '';
 let currentTurnStartedAt = 0;
+let remoteDrag = null;
+let lastDragSentAt = 0;
+let lastStateSentAt = 0;
+let isLocalMotionAuthority = false;
 let penImgs      = { black: [], blue: [] };
 let classicImgs  = {};
 let classicSetupPlayers = [
@@ -835,6 +839,9 @@ function connectRoomEvents(roomId) {
       spawnFloatingReaction(msg.text);
     } catch (err) {}
   });
+  roomEvents.addEventListener('game', event => {
+    try { handleRemoteGameEvent(JSON.parse(event.data)); } catch (err) {}
+  });
 }
 
 function openRoomFromUrl() {
@@ -980,6 +987,8 @@ function initGame() {
   particles     = [];
   selected      = null;
   dragStart     = null;
+  remoteDrag    = null;
+  isLocalMotionAuthority = false;
   if (gameMode === 'battle') {
     scores      = { black: 0, blue: 0 };
     currentTurn = 'black';
@@ -1164,10 +1173,16 @@ function draw() {
     let pull = p5.Vector.sub(dragStart, createVector(mouseX, mouseY));
     if (pull.mag() > MAX_DRAG) pull.setMag(MAX_DRAG);
     if (pull.mag() > 6) drawArrow(dragStart, pull);
+    publishDragMove();
+  } else if (gameState === 'play' && remoteDrag) {
+    let pull = createVector(remoteDrag.pullX, remoteDrag.pullY);
+    if (pull.mag() > MAX_DRAG) pull.setMag(MAX_DRAG);
+    if (pull.mag() > 6) drawArrow(createVector(remoteDrag.x, remoteDrag.y), pull);
   }
 
   if (gameState === 'play')    checkWin();
   if (gameState === 'ending')  checkPendingWin();
+  publishMovingState();
 }
 
 function drawPlatform() {
@@ -1219,11 +1234,20 @@ function drawArrow(origin, pull) {
 function mousePressed() {
   if (gameState !== 'play') return;
   if (!canLocalControlTurn()) return;
-  for (let s of sticks) {
+  for (let i = 0; i < sticks.length; i++) {
+    let s = sticks[i];
     if (!s.gone && s.team === currentTurn && s.hit(mouseX, mouseY)) {
       selected  = s;
       dragStart = createVector(mouseX, mouseY);
       markTurnTouched();
+      publishGameEvent('drag-start', {
+        stickIndex: i,
+        x: dragStart.x,
+        y: dragStart.y,
+        pullX: 0,
+        pullY: 0,
+        sticks: serializeSticks()
+      });
       break;
     }
   }
@@ -1265,11 +1289,14 @@ function mouseReleased() {
     playFlickSound(pwr);
     spawnParticles(clickPt.x, clickPt.y, pull, selected.team);
     hideCubeOption();
+    isLocalMotionAuthority = true;
+    publishGameEvent('drag-end', { sticks: serializeSticks() });
     switchTurn();
   }
 
   selected  = null;
   dragStart = null;
+  publishGameEvent('drag-clear', { sticks: serializeSticks() });
 }
 
 function touchStarted(event) {
@@ -1350,6 +1377,102 @@ async function publishTurnState() {
       })
     });
   } catch (err) {}
+}
+
+function publishDragMove() {
+  if (!selected || !dragStart || !activeRoomId || !canLocalControlTurn()) return;
+  if (millis() - lastDragSentAt < 45) return;
+  lastDragSentAt = millis();
+  let pull = p5.Vector.sub(dragStart, createVector(mouseX, mouseY));
+  if (pull.mag() > MAX_DRAG) pull.setMag(MAX_DRAG);
+  publishGameEvent('drag-move', {
+    stickIndex: sticks.indexOf(selected),
+    x: dragStart.x,
+    y: dragStart.y,
+    pullX: pull.x,
+    pullY: pull.y
+  });
+}
+
+function publishMovingState() {
+  if (!activeRoomId || !isLocalMotionAuthority || gameState !== 'play') return;
+  if (millis() - lastStateSentAt < 80) return;
+  let moving = sticks.some(s => !s.gone && (s.vel.mag() > 0.12 || abs(s.angVel) > 0.004 || abs(s.rollVel) > 0.004));
+  let falling = sticks.some(s => s.gone && s.fallT < 1);
+  if (!moving && !falling) {
+    publishGameEvent('state', { sticks: serializeSticks() });
+    isLocalMotionAuthority = false;
+    return;
+  }
+  lastStateSentAt = millis();
+  publishGameEvent('state', { sticks: serializeSticks() });
+}
+
+async function publishGameEvent(type, payload) {
+  if (!activeRoomId || !localPlayerId || location.protocol === 'file:') return;
+  try {
+    await fetch('/api/rooms/' + activeRoomId + '/game-event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerId: localPlayerId, type, payload })
+    });
+  } catch (err) {}
+}
+
+function handleRemoteGameEvent(msg) {
+  if (!msg || msg.playerId === localPlayerId || gameState !== 'play') return;
+  isLocalMotionAuthority = false;
+  let payload = msg.payload || {};
+  if (payload.sticks) applySticksState(payload.sticks);
+  if (msg.type === 'drag-start' || msg.type === 'drag-move') {
+    remoteDrag = {
+      playerId: msg.playerId,
+      stickIndex: payload.stickIndex,
+      x: payload.x,
+      y: payload.y,
+      pullX: payload.pullX || 0,
+      pullY: payload.pullY || 0
+    };
+  }
+  if (msg.type === 'drag-end' || msg.type === 'drag-clear') remoteDrag = null;
+}
+
+function serializeSticks() {
+  return sticks.map(s => ({
+    x: s.pos.x,
+    y: s.pos.y,
+    vx: s.vel.x,
+    vy: s.vel.y,
+    angle: s.angle,
+    angVel: s.angVel,
+    gone: s.gone,
+    fallT: s.fallT,
+    fallX: s.fallDir ? s.fallDir.x : 0,
+    fallY: s.fallDir ? s.fallDir.y : 1,
+    rollPhase: s.rollPhase,
+    rollVel: s.rollVel
+  }));
+}
+
+function applySticksState(state) {
+  if (!Array.isArray(state) || !sticks.length) return;
+  state.forEach((data, i) => {
+    let s = sticks[i];
+    if (!s || !data) return;
+    s.pos.x = Number(data.x) || s.pos.x;
+    s.pos.y = Number(data.y) || s.pos.y;
+    s.vel.x = Number(data.vx) || 0;
+    s.vel.y = Number(data.vy) || 0;
+    s.angle = Number(data.angle) || 0;
+    s.angVel = Number(data.angVel) || 0;
+    s.gone = !!data.gone;
+    s.fallT = Number(data.fallT) || 0;
+    s.fallDir = createVector(Number(data.fallX) || 0, Number(data.fallY) || 1);
+    s.rollPhase = Number(data.rollPhase) || s.rollPhase;
+    s.rollVel = Number(data.rollVel) || 0;
+    s.calcEnds();
+  });
+  updateHUD();
 }
 
 // ── SOUND ─────────────────────────────────────────────────────────────────────
@@ -1574,7 +1697,7 @@ class Stick {
     }
 
     let isActive   = !this.gone && this.team === currentTurn && !selected;
-    let isSelected = selected === this;
+    let isSelected = selected === this || (remoteDrag && sticks[remoteDrag.stickIndex] === this);
 
     push();
     translate(this.pos.x, this.pos.y);
