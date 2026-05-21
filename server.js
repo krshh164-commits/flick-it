@@ -80,8 +80,27 @@ app.post('/api/rooms/:roomId/start', (req, res) => {
   room.started = true;
   room.seed = Date.now();
   room.currentTurnId = room.players[0]?.id || null;
+  room.currentTurnStartedAt = Date.now();
+  room.cubeAvailable = true;
   broadcastRoom(room.id, 'room', publicRoom(room));
   broadcastRoom(room.id, 'start', publicRoom(room));
+  res.json({ ok: true, room: publicRoom(room) });
+});
+
+app.post('/api/rooms/:roomId/turn', (req, res) => {
+  const room = getRoom(req.params.roomId);
+  const playerId = String(req.body?.playerId || '').trim();
+  if (!room.started) return res.status(409).json({ ok: false, error: 'Game not started' });
+  if (room.currentTurnId && room.currentTurnId !== playerId) return res.status(403).json({ ok: false, error: 'Not your turn' });
+
+  const nextTurnId = String(req.body?.nextTurnId || '').trim();
+  if (nextTurnId && room.players.some(p => p.id === nextTurnId)) {
+    room.currentTurnId = nextTurnId;
+  }
+  room.currentTurnStartedAt = Date.now();
+  if (req.body?.cubeAvailable === false) room.cubeAvailable = false;
+
+  broadcastRoom(room.id, 'room', publicRoom(room));
   res.json({ ok: true, room: publicRoom(room) });
 });
 
@@ -147,14 +166,14 @@ function createRoom(mode = 'classic') {
   let id;
   do { id = Math.random().toString(36).slice(2, 8).toUpperCase(); }
   while (rooms.has(id));
-  const room = { id, mode, hostId: null, currentTurnId: null, started: false, seed: Date.now(), players: [], chatHistory: [] };
+  const room = { id, mode, hostId: null, currentTurnId: null, currentTurnStartedAt: 0, cubeAvailable: true, started: false, seed: Date.now(), players: [], chatHistory: [] };
   rooms.set(id, room);
   return room;
 }
 
 function getRoom(id) {
   const clean = cleanRoomId(id) || createRoom().id;
-  if (!rooms.has(clean)) rooms.set(clean, { id: clean, mode: 'classic', hostId: null, currentTurnId: null, started: false, seed: Date.now(), players: [], chatHistory: [] });
+  if (!rooms.has(clean)) rooms.set(clean, { id: clean, mode: 'classic', hostId: null, currentTurnId: null, currentTurnStartedAt: 0, cubeAvailable: true, started: false, seed: Date.now(), players: [], chatHistory: [] });
   return rooms.get(clean);
 }
 
@@ -173,6 +192,8 @@ function publicRoom(room) {
     mode: room.mode || 'classic',
     hostId: room.hostId,
     currentTurnId: room.currentTurnId || null,
+    currentTurnStartedAt: room.currentTurnStartedAt || 0,
+    cubeAvailable: room.cubeAvailable !== false,
     started: room.started,
     seed: room.seed,
     players: room.players

@@ -167,6 +167,7 @@
     color:#eee;font-size:13px;font-weight:700;letter-spacing:1px;z-index:22;
     border:1px solid rgba(255,255,255,0.14);pointer-events:all;
   }
+  body.classic-game #cubeOption { right:236px; }
   #cubeOption input { width:16px;height:16px;accent-color:#c0392b;cursor:pointer; }
 
   #playerSidebar {
@@ -387,6 +388,7 @@ let gameMode     = 'battle';
 let scores       = { black: 0, blue: 0 };
 let currentTurn  = 'black';
 let currentTurnPlayerId = '';
+let currentTurnStartedAt = 0;
 let penImgs      = { black: [], blue: [] };
 let classicImgs  = {};
 let classicSetupPlayers = [
@@ -487,6 +489,7 @@ function handlePlay() {
 function backToMenu() {
   lobbyState = null;
   document.body.classList.remove('lobby-open');
+  document.body.classList.remove('classic-game');
   document.getElementById('classicSetup').style.display = 'none';
   document.getElementById('menu').style.display = 'flex';
   renderClassicSetup();
@@ -808,6 +811,7 @@ function connectRoomEvents(roomId) {
     try {
       roomState = JSON.parse(event.data);
       syncLobbySnapshot();
+      applyRoomTurnState();
       renderClassicSetup();
       if (roomState.started && gameState !== 'play') beginRoomGame(roomState);
     } catch (err) {}
@@ -893,10 +897,36 @@ function syncLobbySnapshot() {
   roomCode = activeRoomId || (roomState && roomState.id) || roomCode;
   playersList = roomState && Array.isArray(roomState.players) ? roomState.players.slice() : [];
   if (roomState && roomState.currentTurnId) currentTurnPlayerId = roomState.currentTurnId;
+  if (roomState && roomState.currentTurnStartedAt) currentTurnStartedAt = roomState.currentTurnStartedAt;
   isHost = !!(roomState && roomState.hostId && roomState.hostId === localPlayerId);
   if ((lobbyState === 'lobby-host' || lobbyState === 'lobby-guest') && roomState) {
     lobbyState = isHost ? 'lobby-host' : 'lobby-guest';
   }
+}
+
+function applyRoomTurnState() {
+  if (!roomState || gameState !== 'play') return;
+  if (roomState.currentTurnId) {
+    currentTurnPlayerId = roomState.currentTurnId;
+    if (gameMode === 'classic') {
+      let idx = classicPlayers.findIndex(p => p.id === currentTurnPlayerId);
+      if (idx >= 0) {
+        classicTurnIndex = idx;
+        currentTurn = classicPlayers[idx].team;
+      }
+    } else if (roomState.players && roomState.players.length >= 2) {
+      currentTurn = roomState.players[0].id === currentTurnPlayerId ? 'black' : 'blue';
+    }
+  }
+  if (roomState.currentTurnStartedAt) currentTurnStartedAt = roomState.currentTurnStartedAt;
+  if (roomState.cubeAvailable === false) {
+    firstMoveDone = true;
+    persistRoomCubeSpent();
+    let cubeOption = document.getElementById('cubeOption');
+    if (cubeOption) cubeOption.style.display = 'none';
+  }
+  updateHUD();
+  updateTurnTimer();
 }
 
 function firstOpenColor() {
@@ -953,29 +983,40 @@ function initGame() {
   if (gameMode === 'battle') {
     scores      = { black: 0, blue: 0 };
     currentTurn = 'black';
-    currentTurnPlayerId = roomState && roomState.players && roomState.players[0] ? roomState.players[0].id : '';
+    currentTurnPlayerId = roomState && roomState.currentTurnId ? roomState.currentTurnId
+      : roomState && roomState.players && roomState.players[0] ? roomState.players[0].id : '';
+    if (roomState && roomState.players && roomState.players[1] && roomState.players[1].id === currentTurnPlayerId) {
+      currentTurn = 'blue';
+    }
     pendingLeft = { black: STICKS_PER, blue: STICKS_PER };
   } else {
     classicPlayers.forEach(p => p.eliminated = false);
-    classicTurnIndex = 0;
-    currentTurn = classicPlayers[0] ? classicPlayers[0].team : '';
-    currentTurnPlayerId = classicPlayers[0] ? classicPlayers[0].id || '' : '';
+    classicTurnIndex = roomState && roomState.currentTurnId ? classicPlayers.findIndex(p => p.id === roomState.currentTurnId) : 0;
+    if (classicTurnIndex < 0) classicTurnIndex = 0;
+    currentTurn = classicPlayers[classicTurnIndex] ? classicPlayers[classicTurnIndex].team : '';
+    currentTurnPlayerId = classicPlayers[classicTurnIndex] ? classicPlayers[classicTurnIndex].id || '' : '';
     pendingLeft = {};
   }
   pendingWinner = null;
-  firstMoveDone = false;
+  firstMoveDone = isRoomCubeSpent();
   lastTurnPulseKey = '';
 
   placeSticks();
 
   let cubeToggle = document.getElementById('cubeToggle');
   cubeToggle.checked = false;
-  document.getElementById('cubeOption').style.display  = 'flex';
+  document.getElementById('cubeOption').style.display = firstMoveDone ? 'none' : 'flex';
   document.getElementById('winScreen').style.display   = 'none';
   document.getElementById('playerSidebar').style.display = gameMode === 'classic' ? 'block' : 'none';
   document.getElementById('chatPanel').style.display = 'block';
   updateHUD();
-  startTurnTimer();
+  if (activeRoomId && currentTurnStartedAt) {
+    turnStartedAt = millis() - (Date.now() - currentTurnStartedAt);
+    turnTouched = false;
+    updateTurnTimer();
+  } else {
+    startTurnTimer();
+  }
   renderChatMessages();
 }
 
@@ -1038,7 +1079,23 @@ function toggleCubes() {
 
 function hideCubeOption() {
   firstMoveDone = true;
+  persistRoomCubeSpent();
   document.getElementById('cubeOption').style.display = 'none';
+}
+
+function roomCubeKey() {
+  return activeRoomId ? 'flickItCubeSpent:' + activeRoomId : '';
+}
+
+function isRoomCubeSpent() {
+  if (roomState && roomState.cubeAvailable === false) return true;
+  let key = roomCubeKey();
+  return !!key && sessionStorage.getItem(key) === '1';
+}
+
+function persistRoomCubeSpent() {
+  let key = roomCubeKey();
+  if (key) sessionStorage.setItem(key, '1');
 }
 
 function makeObstacles() {
@@ -1244,10 +1301,12 @@ function switchTurn() {
   }
   updateHUD();
   startTurnTimer();
+  publishTurnState();
 }
 
 function startTurnTimer() {
   turnStartedAt = millis();
+  currentTurnStartedAt = Date.now();
   turnTouched = false;
   updateTurnTimer();
 }
@@ -1265,9 +1324,10 @@ function updateTurnTimer() {
     timer.innerText = '';
     return;
   }
-  let remaining = max(0, ceil((TURN_IDLE_LIMIT - (millis() - turnStartedAt)) / 1000));
+  let elapsed = activeRoomId && currentTurnStartedAt ? Date.now() - currentTurnStartedAt : millis() - turnStartedAt;
+  let remaining = max(0, ceil((TURN_IDLE_LIMIT - elapsed) / 1000));
   timer.innerText = remaining;
-  if (remaining <= 0) skipIdleTurn();
+  if (remaining <= 0 && canLocalControlTurn()) skipIdleTurn();
 }
 
 function skipIdleTurn() {
@@ -1275,6 +1335,21 @@ function skipIdleTurn() {
   selected = null;
   dragStart = null;
   switchTurn();
+}
+
+async function publishTurnState() {
+  if (!activeRoomId || !localPlayerId || location.protocol === 'file:') return;
+  try {
+    await fetch('/api/rooms/' + activeRoomId + '/turn', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        playerId: localPlayerId,
+        nextTurnId: currentTurnPlayerId,
+        cubeAvailable: !firstMoveDone
+      })
+    });
+  } catch (err) {}
 }
 
 // ── SOUND ─────────────────────────────────────────────────────────────────────
@@ -1791,6 +1866,7 @@ function triggerWin(winner, leftCounts) {
 
 function startBattleGame() {
   gameMode = 'battle';
+  document.body.classList.remove('classic-game');
   clearChat();
   initSounds();
   document.getElementById('menu').style.display    = 'none';
@@ -1809,6 +1885,7 @@ function startBattleGame() {
 
 function startClassicGame(fromRoom = false) {
   gameMode = 'classic';
+  document.body.classList.add('classic-game');
   clearChat();
   if (!fromRoom) {
     classicPlayers = classicSetupPlayers.map((p, i) => {
