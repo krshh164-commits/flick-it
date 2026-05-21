@@ -249,6 +249,88 @@
   #winScreen p  { font-size:17px;color:#aaa;margin-bottom:32px; }
   #winScreen button { padding:12px 44px;font-size:16px;font-weight:800; }
   #winScreen button:hover { transform:scale(1.06);background:#d04435; }
+
+  /* ── MOBILE OVERLAY TOGGLE BUTTONS ─────────────────────────────────────── */
+  .panel-fab {
+    display:none;position:fixed;z-index:26;
+    width:44px;height:44px;border-radius:50%;
+    border:1px solid rgba(255,255,255,0.18);
+    background:rgba(12,12,14,0.88);color:#eee;
+    font-size:20px;cursor:pointer;
+    align-items:center;justify-content:center;
+    box-shadow:0 2px 14px rgba(0,0,0,0.55);
+    transition:background 0.15s,border-color 0.15s;
+    pointer-events:all;
+  }
+  .panel-fab.panel-open { background:rgba(192,57,43,0.82);border-color:#c0392b; }
+  #chatToggleBtn  { bottom:18px;left:10px; }
+  #playersToggleBtn { top:70px;right:10px; }
+
+  /* ── MOBILE RESPONSIVE ─────────────────────────────────────────────────── */
+  @media (max-width:700px) {
+    .panel-fab { display:flex; }
+    .mobile-hidden { display:none !important; }
+
+    /* HUD */
+    #hud { height:50px;padding:0 8px; }
+    .score-panel { padding:5px 10px;border-radius:8px; }
+    .score-dot { width:10px;height:10px; }
+    .score-name { font-size:10px;letter-spacing:0; }
+    .score-num { font-size:18px; }
+    #turnBanner { padding:5px 10px;gap:6px; }
+    #turnDot { width:12px;height:12px; }
+    #turnText { font-size:10px;letter-spacing:0; }
+    #turnTimer { font-size:10px;padding:1px 4px; }
+
+    /* Panels: slide-over overlay, narrower */
+    #chatPanel { width:min(230px,80vw);top:50px; }
+    #playerSidebar { width:min(198px,72vw);top:50px; }
+
+    /* Canvas plat: account for no panels */
+    canvas { touch-action:none; }
+
+    /* Reset/New Game btn */
+    #resetBtn { bottom:18px;right:10px;padding:7px 18px;font-size:12px; }
+
+    /* Menu */
+    #menu h1 { font-size:34px;letter-spacing:2px; }
+    #menu .inst { font-size:12px;margin-bottom:24px; }
+    .mode-row { flex-direction:column;gap:10px; }
+    .mode-card { width:min(260px,88vw); }
+    #menu button { padding:11px 36px;font-size:15px; }
+
+    /* Lobby card */
+    .lobby-card { padding:20px 14px;border-radius:14px; }
+    #classicSetup h2 { font-size:20px;letter-spacing:1px;margin-bottom:6px; }
+    #classicSetup .setup-sub { font-size:12px;margin-bottom:14px; }
+
+    /* Room code row: stack buttons below code */
+    .room-code-row {
+      flex-wrap:wrap;gap:6px;margin:8px 0 10px;
+      justify-content:center;
+    }
+    .room-code { font-size:18px;letter-spacing:2px; }
+    .room-code-row .soft-btn { padding:5px 12px;font-size:11px;letter-spacing:0; }
+
+    /* Lobby action buttons: full-width stacked */
+    #classicSetup .setup-actions { flex-direction:column;align-items:center;gap:8px;margin-top:14px; }
+    #classicSetup button { width:100%;max-width:280px;padding:10px 16px;font-size:13px; }
+
+    /* Lobby choice grid: single column */
+    .lobby-choice { grid-template-columns:1fr;gap:8px; }
+
+    /* Player list */
+    .room-player-list { max-height:160px; }
+
+    /* Win screen */
+    #winScreen h2 { font-size:30px; }
+    #winScreen p { font-size:14px; }
+    #winScreen button { padding:10px 32px;font-size:14px; }
+
+    /* Cube option */
+    #cubeOption { top:58px;right:8px;font-size:11px;padding:5px 8px; }
+    body.classic-game #cubeOption { right:8px; }
+  }
 </style>
 </head>
 <body>
@@ -323,6 +405,9 @@
 </div>
 
 <div id="reactionLayer"></div>
+
+<button class="panel-fab" id="chatToggleBtn" onclick="toggleChatPanel()" title="Chat">💬</button>
+<button class="panel-fab" id="playersToggleBtn" onclick="togglePlayersPanel()" title="Players">☰</button>
 
 <div id="winScreen">
   <h2 id="winTitle">BLACK WINS!</h2>
@@ -2033,6 +2118,7 @@ function startBattleGame() {
   document.getElementById('resetBtn').style.display= 'block';
   gameState = 'play';
   updateBattleScoreNames();
+  initMobilePanels();
   initGame();
 }
 
@@ -2065,6 +2151,7 @@ function startClassicGame(fromRoom = false) {
   document.getElementById('chatPanel').style.display = 'block';
   document.getElementById('resetBtn').style.display = 'block';
   gameState = 'play';
+  initMobilePanels();
   initGame();
 }
 
@@ -2204,6 +2291,38 @@ async function publishRoomEvent(type, payload) {
   }
   addChatMessage(payload);
   if (type === 'reaction') spawnFloatingReaction(payload.text);
+}
+
+function isMobile() { return window.innerWidth <= 700; }
+
+function toggleChatPanel() {
+  let panel = document.getElementById('chatPanel');
+  let btn   = document.getElementById('chatToggleBtn');
+  if (!panel || !btn) return;
+  let hidden = panel.classList.toggle('mobile-hidden');
+  btn.classList.toggle('panel-open', !hidden);
+  btn.textContent = hidden ? '💬' : '✕';
+}
+
+function togglePlayersPanel() {
+  let panel = document.getElementById('playerSidebar');
+  let btn   = document.getElementById('playersToggleBtn');
+  if (!panel || !btn) return;
+  let hidden = panel.classList.toggle('mobile-hidden');
+  btn.classList.toggle('panel-open', !hidden);
+  btn.textContent = hidden ? '☰' : '✕';
+}
+
+function initMobilePanels() {
+  if (!isMobile()) return;
+  let chat    = document.getElementById('chatPanel');
+  let sidebar = document.getElementById('playerSidebar');
+  let chatBtn = document.getElementById('chatToggleBtn');
+  let plrBtn  = document.getElementById('playersToggleBtn');
+  if (chat)    { chat.classList.add('mobile-hidden'); }
+  if (sidebar) { sidebar.classList.add('mobile-hidden'); }
+  if (chatBtn) { chatBtn.textContent = '💬'; chatBtn.classList.remove('panel-open'); }
+  if (plrBtn)  { plrBtn.textContent  = '☰';  plrBtn.classList.remove('panel-open'); }
 }
 
 function buildPlayerList() {
