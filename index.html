@@ -528,7 +528,7 @@ let turnTouched = false;
 
 // ── SERVER-AUTH SCALE ─────────────────────────────────────────────────────────
 const REF_W = 880, REF_H = 600;
-let scale = 1, refOffX = 0, refOffY = 0;
+let viewScale = 1, refOffX = 0, refOffY = 0;
 
 // ── PRELOAD ───────────────────────────────────────────────────────────────────
 function preload() {
@@ -584,11 +584,11 @@ function computePlat() {
 
   // Fit the 880×600 reference into the available area; cap scale on desktop
   let maxSc = mob ? 2.0 : 1.3;
-  scale = min(availW / REF_W, availH / REF_H, maxSc);
+  viewScale = min(availW / REF_W, availH / REF_H, maxSc);
 
   // Platform is EXACTLY the scaled reference — no wasted empty space
-  platW = REF_W * scale;
-  platH = REF_H * scale;
+  platW = REF_W * viewScale;
+  platH = REF_H * viewScale;
   platX = (width  - platW) / 2;
   platY = hudH + margin + (availH - platH) / 2;
 
@@ -598,10 +598,10 @@ function computePlat() {
 }
 
 function refToScreen(rx, ry) {
-  return { x: platX + refOffX + rx * scale, y: platY + refOffY + ry * scale };
+  return { x: platX + refOffX + rx * viewScale, y: platY + refOffY + ry * viewScale };
 }
 function screenToRef(sx, sy) {
-  return { x: (sx - platX - refOffX) / scale, y: (sy - platY - refOffY) / scale };
+  return { x: (sx - platX - refOffX) / viewScale, y: (sy - platY - refOffY) / viewScale };
 }
 
 function selectMode(mode) {
@@ -1393,7 +1393,7 @@ function mouseReleased() {
     let clickPt = dragStart.copy();
     let offset  = p5.Vector.sub(clickPt, selected.pos);
 
-    let hl = HALF_LEN * scale;
+    let hl = HALF_LEN * viewScale;
     let perpAng  = selected.angle + HALF_PI;
     let perp     = createVector(cos(perpAng), sin(perpAng));
     let leverage = constrain(p5.Vector.dot(offset, perp) / hl, -1, 1);
@@ -1403,8 +1403,8 @@ function mouseReleased() {
 
     // Convert screen-space force to reference-space force for server
     let force = pull.copy().setMag(pwr * 22);
-    let fx = force.x / scale;
-    let fy = force.y / scale;
+    let fx = force.x / viewScale;
+    let fy = force.y / viewScale;
 
     let idx = sticks.indexOf(selected);
     playFlickSound(pwr);
@@ -1513,8 +1513,8 @@ function createClientStick(sd) {
 function updateClientStick(s, sd) {
   let sp = refToScreen(sd.x, sd.y);
   s.pos.x = sp.x; s.pos.y = sp.y;
-  s.vel.x = (sd.vx || 0) * scale;
-  s.vel.y = (sd.vy || 0) * scale;
+  s.vel.x = (sd.vx || 0) * viewScale;
+  s.vel.y = (sd.vy || 0) * viewScale;
   s.angle    = sd.angle    || 0;
   s.angVel   = sd.angVel   || 0;
   s.rollPhase = sd.rollPhase || s.rollPhase;
@@ -1644,7 +1644,7 @@ class Stick {
   }
 
   calcEnds() {
-    let hl = HALF_LEN * scale;
+    let hl = HALF_LEN * viewScale;
     let ca = cos(this.angle), sa = sin(this.angle);
     this.ax = this.pos.x + ca * hl; this.ay = this.pos.y + sa * hl;
     this.bx = this.pos.x - ca * hl; this.by = this.pos.y - sa * hl;
@@ -1671,7 +1671,7 @@ class Stick {
 
   show() {
     if (this.gone && this.fallT >= 1) return;
-    let sc        = scale;
+    let sc        = viewScale;
     let hl        = HALF_LEN * sc, hw = HALF_W * sc;
     let pw        = PEN_DRAW_W * sc, ph = PEN_DRAW_H * sc;
     let spd       = this.vel.mag();
@@ -1746,11 +1746,11 @@ class Stick {
   }
 
   hit(mx, my) {
-    let hl = HALF_LEN * scale, hw = HALF_W * scale;
+    let hl = HALF_LEN * viewScale, hw = HALF_W * viewScale;
     let dx = mx - this.pos.x, dy = my - this.pos.y;
     let ca = cos(-this.angle), sa = sin(-this.angle);
     let lx = dx*ca - dy*sa, ly = dx*sa + dy*ca;
-    return abs(lx) < hl+16*scale && abs(ly) < hw+10*scale;
+    return abs(lx) < hl+16*viewScale && abs(ly) < hw+10*viewScale;
   }
 }
 
