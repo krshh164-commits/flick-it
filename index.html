@@ -576,13 +576,25 @@ function windowResized() {
 }
 
 function computePlat() {
-  platW = min(width  * 0.88, 1040);
-  platH = min(height - 132, height * 0.84, 760);
+  let mob    = width <= 700;
+  let hudH   = mob ? 50 : 64;
+  let margin = mob ? 4  : 14;
+  let availW = width  - margin * 2;
+  let availH = height - hudH - margin * 2;
+
+  // Fit the 880×600 reference into the available area; cap scale on desktop
+  let maxSc = mob ? 2.0 : 1.3;
+  scale = min(availW / REF_W, availH / REF_H, maxSc);
+
+  // Platform is EXACTLY the scaled reference — no wasted empty space
+  platW = REF_W * scale;
+  platH = REF_H * scale;
   platX = (width  - platW) / 2;
-  platY = max(72, (height - platH) / 2 + 18);
-  scale = min(platW / REF_W, platH / REF_H);
-  refOffX = (platW - REF_W * scale) / 2;
-  refOffY = (platH - REF_H * scale) / 2;
+  platY = hudH + margin + (availH - platH) / 2;
+
+  // No centering offset needed inside plat — reference (0,0) maps to (platX, platY)
+  refOffX = 0;
+  refOffY = 0;
 }
 
 function refToScreen(rx, ry) {
