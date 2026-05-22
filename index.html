@@ -483,10 +483,6 @@ let scores       = { black: 0, blue: 0 };
 let currentTurn  = 'black';
 let currentTurnPlayerId = '';
 let currentTurnStartedAt = 0;
-let remoteDrag = null;
-let lastDragSentAt = 0;
-let lastStateSentAt = 0;
-let isLocalMotionAuthority = false;
 let penImgs      = { black: [], blue: [] };
 let classicImgs  = {};
 let classicSetupPlayers = [
@@ -516,10 +512,13 @@ let roomChatOnline = false;
 let soundsReady  = false;
 let flickOsc, flickEnv, hitOsc, hitEnv, hitNoise, hitNoiseEnv;
 let lastHitSoundFrame = -20;
-let firstMoveDone= false;
+let firstMoveDone = false;
 let turnStartedAt = 0;
 let turnTouched = false;
-let gameStartFrame = 0;
+
+// ── SERVER-AUTH SCALE ─────────────────────────────────────────────────────────
+const REF_W = 880, REF_H = 600;
+let scale = 1, refOffX = 0, refOffY = 0;
 
 // ── PRELOAD ───────────────────────────────────────────────────────────────────
 function preload() {
@@ -571,6 +570,16 @@ function computePlat() {
   platH = min(height - 132, height * 0.84, 760);
   platX = (width  - platW) / 2;
   platY = max(72, (height - platH) / 2 + 18);
+  scale = min(platW / REF_W, platH / REF_H);
+  refOffX = (platW - REF_W * scale) / 2;
+  refOffY = (platH - REF_H * scale) / 2;
+}
+
+function refToScreen(rx, ry) {
+  return { x: platX + refOffX + rx * scale, y: platY + refOffY + ry * scale };
+}
+function screenToRef(sx, sy) {
+  return { x: (sx - platX - refOffX) / scale, y: (sy - platY - refOffY) / scale };
 }
 
 function selectMode(mode) {
@@ -898,26 +907,15 @@ function beginClassicFromRoom(room) {
       eliminated: !!(room.eliminatedPlayerIds && room.eliminatedPlayerIds.includes(p.id))
     };
   });
-  randomSeed(room.seed || 1);
   startClassicGame(true);
-  // Restore stick positions if the game was already in progress
-  if (room.sticksState && room.sticksState.length) {
-    let anyAlive = room.sticksState.some(s => !s.gone);
-    if (anyAlive) {
-      applySticksState(room.sticksState);
-      classicPlayers.forEach(p => {
-        let teamSticks = sticks.filter(s => s.team === p.team);
-        if (teamSticks.length && teamSticks.every(s => s.gone)) p.eliminated = true;
-      });
-      updateHUD();
-    }
-  }
+  // Sticks come from server via 'start' or 'gamestate' SSE events
 }
 
 function connectRoomEvents(roomId) {
   if (location.protocol === 'file:' || typeof EventSource === 'undefined') return;
   if (roomEvents) roomEvents.close();
   roomEvents = new EventSource('/events?room=' + roomId);
+
   roomEvents.addEventListener('room', event => {
     try {
       roomState = JSON.parse(event.data);
@@ -927,9 +925,67 @@ function connectRoomEvents(roomId) {
       if (roomState.started && gameState !== 'play') beginRoomGame(roomState);
     } catch (err) {}
   });
+
   roomEvents.addEventListener('start', event => {
-    try { beginRoomGame(JSON.parse(event.data)); } catch (err) {}
+    try {
+      let data = JSON.parse(event.data);
+      let room = data.room || data;
+      if (gameState !== 'play') beginRoomGame(room);
+      if (data.sticks && data.sticks.length) applyServerState(data.sticks);
+    } catch (err) {}
   });
+
+  roomEvents.addEventListener('gamestate', event => {
+    try {
+      if (gameState !== 'play') return;
+      let data = JSON.parse(event.data);
+      applyServerState(data.sticks);
+      if (data.scores) scores = data.scores;
+      if (data.eliminatedPlayerIds && roomState) roomState.eliminatedPlayerIds = data.eliminatedPlayerIds;
+      if (data.currentTurnId && data.currentTurnId !== currentTurnPlayerId) {
+        currentTurnPlayerId = data.currentTurnId;
+        currentTurnStartedAt = data.currentTurnStartedAt || currentTurnStartedAt;
+        if (roomState) {
+          roomState.currentTurnId = data.currentTurnId;
+          roomState.currentTurnStartedAt = data.currentTurnStartedAt;
+        }
+        applyRoomTurnState();
+      }
+    } catch (err) {}
+  });
+
+  roomEvents.addEventListener('turn', event => {
+    try {
+      let data = JSON.parse(event.data);
+      currentTurnPlayerId = data.currentTurnId;
+      currentTurnStartedAt = data.currentTurnStartedAt || Date.now();
+      if (roomState) {
+        roomState.currentTurnId = data.currentTurnId;
+        roomState.currentTurnStartedAt = data.currentTurnStartedAt;
+      }
+      applyRoomTurnState();
+    } catch (err) {}
+  });
+
+  roomEvents.addEventListener('winner', event => {
+    try {
+      let data = JSON.parse(event.data);
+      if (data.sticks && data.sticks.length) applyServerState(data.sticks);
+      pendingWinner = data.winner;
+      pendingLeft = data.leftCounts || {};
+      // For classic mode, map leftCounts (keyed by playerId) to team keys
+      if (gameMode === 'classic') {
+        let mapped = {};
+        classicPlayers.forEach(p => {
+          mapped[p.team] = data.leftCounts ? (data.leftCounts[p.id] || 0) : 0;
+        });
+        pendingLeft = mapped;
+      }
+      selected = null; dragStart = null;
+      gameState = 'ending';
+    } catch (err) {}
+  });
+
   roomEvents.addEventListener('history', event => {
     try {
       chatMessages = JSON.parse(event.data) || [];
@@ -945,9 +1001,6 @@ function connectRoomEvents(roomId) {
       addChatMessage(msg);
       spawnFloatingReaction(msg.text);
     } catch (err) {}
-  });
-  roomEvents.addEventListener('game', event => {
-    try { handleRemoteGameEvent(JSON.parse(event.data)); } catch (err) {}
   });
 }
 
@@ -977,7 +1030,7 @@ async function openRoomFromUrl() {
       isHost = room.hostId === localPlayerId;
       if (room.started) {
         document.body.classList.remove('lobby-open');
-        beginRoomGame(room);
+        if (gameState !== 'play') beginRoomGame(room);
         return;
       }
       lobbyState = isHost ? 'lobby-host' : 'lobby-guest';
@@ -1115,8 +1168,6 @@ function initGame() {
   particles     = [];
   selected      = null;
   dragStart     = null;
-  remoteDrag    = null;
-  isLocalMotionAuthority = false;
   if (gameMode === 'battle') {
     scores      = { black: 0, blue: 0 };
     currentTurn = 'black';
@@ -1137,9 +1188,8 @@ function initGame() {
   pendingWinner = null;
   firstMoveDone = isRoomCubeSpent();
   lastTurnPulseKey = '';
-  gameStartFrame = frameCount;
 
-  placeSticks();
+  // Sticks are placed by the server and arrive via 'gamestate' SSE — no local placement
 
   let cubeToggle = document.getElementById('cubeToggle');
   cubeToggle.checked = false;
@@ -1158,57 +1208,6 @@ function initGame() {
   renderChatMessages();
 }
 
-function placeSticks() {
-  let cx  = platX + platW / 2;
-  let cy  = platY + platH / 2;
-  let sx  = platW * 0.38;
-  let sy  = platH * 0.38;
-  let all = [];
-
-  if (gameMode === 'battle') {
-    for (let team of ['black', 'blue']) {
-      for (let placed = 0; placed < STICKS_PER; placed++) {
-        let s = placeSinglePen(cx, cy, sx, sy, all, team, placed);
-        if (s) all.push(s);
-      }
-    }
-  } else {
-    classicPlayers.forEach(player => {
-      for (let placed = 0; placed < CLASSIC_PENS_PER_PLAYER; placed++) {
-        let s = placeSinglePen(cx, cy, sx, sy, all, player.team, 0, player);
-        if (s) all.push(s);
-      }
-    });
-  }
-  sticks = all;
-}
-
-function placeSinglePen(cx, cy, sx, sy, all, team, penIndex, classicPlayer = null) {
-  for (let tries = 0; tries < 3000; tries++) {
-    let x   = cx + random(-sx, sx);
-    let y   = cy + random(-sy, sy);
-    let ang = random(TWO_PI);
-    let ax  = x + cos(ang) * HALF_LEN, ay = y + sin(ang) * HALF_LEN;
-    let bx  = x - cos(ang) * HALF_LEN, by = y - sin(ang) * HALF_LEN;
-
-    if (ax < platX+10 || ax > platX+platW-10 ||
-        bx < platX+10 || bx > platX+platW-10 ||
-        ay < platY+10 || ay > platY+platH-10 ||
-        by < platY+10 || by > platY+platH-10) continue;
-
-    let ok = true;
-    for (let s of all) {
-      if (segsTooClose(ax,ay,bx,by,s.ax,s.ay,s.bx,s.by, HALF_W*7)) {
-        ok = false; break;
-      }
-    }
-    if (!ok) continue;
-
-    let s = new Stick(x, y, ang, team, penIndex, classicPlayer);
-    return s;
-  }
-  return null;
-}
 
 function toggleCubes() {
   if (gameState !== 'play' || firstMoveDone) return;
@@ -1271,30 +1270,11 @@ function draw() {
     if (particles[i].dead()) particles.splice(i,1);
   }
 
-  // Update positions first
-  for (let s of sticks) s.update();
+  // Trails are purely visual — update client-side only
+  for (let s of sticks) s.updateTrail();
 
-  // Run multiple collision resolution passes to prevent phasing/overlapping
-  if (gameState === 'play') {
-    for (let iter = 0; iter < COLLISION_ITERS; iter++) {
-      for (let s of sticks)
-        for (let o of obstacles)
-          s.resolveObstacle(o);
-
-      for (let i = 0; i < sticks.length; i++)
-        for (let j = i+1; j < sticks.length; j++)
-          sticks[i].resolve(sticks[j]);
-    }
-  }
-
-  // Draw pens — active team on top
-  let inactive = sticks.filter(s => s.team !== currentTurn || s.gone);
-  let active   = sticks.filter(s => s.team === currentTurn && !s.gone);
-  // Gone pens draw last so they fall over everything
-  let falling  = sticks.filter(s => s.gone);
+  let falling    = sticks.filter(s => s.gone);
   let notFalling = sticks.filter(s => !s.gone);
-
-  // Draw order: inactive → active → falling (always on top while animating)
   for (let s of notFalling) s.show();
   for (let s of falling)    s.show();
 
@@ -1302,16 +1282,9 @@ function draw() {
     let pull = p5.Vector.sub(dragStart, createVector(mouseX, mouseY));
     if (pull.mag() > MAX_DRAG) pull.setMag(MAX_DRAG);
     if (pull.mag() > 6) drawArrow(dragStart, pull);
-    publishDragMove();
-  } else if (gameState === 'play' && remoteDrag) {
-    let pull = createVector(remoteDrag.pullX, remoteDrag.pullY);
-    if (pull.mag() > MAX_DRAG) pull.setMag(MAX_DRAG);
-    if (pull.mag() > 6) drawArrow(createVector(remoteDrag.x, remoteDrag.y), pull);
   }
 
-  if (gameState === 'play')    checkWin();
-  if (gameState === 'ending')  checkPendingWin();
-  publishMovingState();
+  if (gameState === 'ending') checkPendingWin();
 }
 
 function drawPlatform() {
@@ -1369,14 +1342,6 @@ function mousePressed() {
       selected  = s;
       dragStart = createVector(mouseX, mouseY);
       markTurnTouched();
-      publishGameEvent('drag-start', {
-        stickIndex: i,
-        x: dragStart.x,
-        y: dragStart.y,
-        pullX: 0,
-        pullY: 0,
-        sticks: serializeSticks()
-      });
       break;
     }
   }
@@ -1406,26 +1371,39 @@ function mouseReleased() {
     let clickPt = dragStart.copy();
     let offset  = p5.Vector.sub(clickPt, selected.pos);
 
+    let hl = HALF_LEN * scale;
     let perpAng  = selected.angle + HALF_PI;
     let perp     = createVector(cos(perpAng), sin(perpAng));
-    let leverage = constrain(p5.Vector.dot(offset, perp) / HALF_LEN, -1, 1);
+    let leverage = constrain(p5.Vector.dot(offset, perp) / hl, -1, 1);
 
     let axisDir = createVector(cos(selected.angle), sin(selected.angle));
-    let axisOff = p5.Vector.dot(offset, axisDir) / HALF_LEN;
+    let axisOff = p5.Vector.dot(offset, axisDir) / hl;
 
+    // Convert screen-space force to reference-space force for server
     let force = pull.copy().setMag(pwr * 22);
-    selected.kick(force, leverage, axisOff);
+    let fx = force.x / scale;
+    let fy = force.y / scale;
+
+    let idx = sticks.indexOf(selected);
     playFlickSound(pwr);
     spawnParticles(clickPt.x, clickPt.y, pull, selected.team);
     hideCubeOption();
-    isLocalMotionAuthority = true;
-    publishGameEvent('drag-end', { sticks: serializeSticks(), eliminatedPlayerIds: classicPlayers.filter(p => p.eliminated).map(p => p.id) });
-    switchTurn();
+    sendFlick(idx, fx, fy, leverage, axisOff);
   }
 
   selected  = null;
   dragStart = null;
-  publishGameEvent('drag-clear', { sticks: serializeSticks() });
+}
+
+async function sendFlick(stickIndex, fx, fy, leverage, axisOff) {
+  if (!activeRoomId || !localPlayerId || location.protocol === 'file:') return;
+  try {
+    await fetch('/api/rooms/' + activeRoomId + '/flick', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerId: localPlayerId, stickIndex, fx, fy, leverage, axisOff })
+    });
+  } catch (err) {}
 }
 
 function touchStarted(event) {
@@ -1440,25 +1418,6 @@ function touchEnded(event) {
   return false;
 }
 
-function switchTurn() {
-  if (gameMode === 'battle') {
-    currentTurn = currentTurn === 'black' ? 'blue' : 'black';
-    let activePlayer = roomState && roomState.players ? (currentTurn === 'black' ? roomState.players[0] : roomState.players[1]) : null;
-    currentTurnPlayerId = activePlayer ? activePlayer.id : '';
-  } else {
-    let total = classicPlayers.length;
-    let tries = 0;
-    do {
-      classicTurnIndex = (classicTurnIndex + 1) % total;
-      tries++;
-    } while (classicPlayers[classicTurnIndex].eliminated && tries < total);
-    currentTurn = classicPlayers[classicTurnIndex] ? classicPlayers[classicTurnIndex].team : '';
-    currentTurnPlayerId = classicPlayers[classicTurnIndex] ? classicPlayers[classicTurnIndex].id || '' : '';
-  }
-  updateHUD();
-  startTurnTimer();
-  publishTurnState();
-}
 
 function startTurnTimer() {
   turnStartedAt = millis();
@@ -1486,122 +1445,62 @@ function updateTurnTimer() {
   if (remaining <= 0 && canLocalControlTurn()) skipIdleTurn();
 }
 
-function skipIdleTurn() {
+async function skipIdleTurn() {
   if (gameState !== 'play' || turnTouched || selected) return;
   selected = null;
   dragStart = null;
-  switchTurn();
-}
-
-async function publishTurnState() {
-  if (!activeRoomId || !localPlayerId || location.protocol === 'file:') return;
-  try {
-    await fetch('/api/rooms/' + activeRoomId + '/turn', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        playerId: localPlayerId,
-        nextTurnId: currentTurnPlayerId,
-        cubeAvailable: !firstMoveDone
-      })
-    });
-  } catch (err) {}
-}
-
-function publishDragMove() {
-  if (!selected || !dragStart || !activeRoomId || !canLocalControlTurn()) return;
-  if (millis() - lastDragSentAt < 25) return;
-  lastDragSentAt = millis();
-  let pull = p5.Vector.sub(dragStart, createVector(mouseX, mouseY));
-  if (pull.mag() > MAX_DRAG) pull.setMag(MAX_DRAG);
-  publishGameEvent('drag-move', {
-    stickIndex: sticks.indexOf(selected),
-    x: dragStart.x,
-    y: dragStart.y,
-    pullX: pull.x,
-    pullY: pull.y
-  });
-}
-
-function publishMovingState() {
-  if (!activeRoomId || !isLocalMotionAuthority || gameState !== 'play') return;
-  if (millis() - lastStateSentAt < 45) return;
-  let moving = sticks.some(s => !s.gone && (s.vel.mag() > 0.12 || abs(s.angVel) > 0.004 || abs(s.rollVel) > 0.004));
-  let falling = sticks.some(s => s.gone && s.fallT < 1);
-  if (!moving && !falling) {
-    publishGameEvent('state', { sticks: serializeSticks() });
-    isLocalMotionAuthority = false;
-    return;
+  if (activeRoomId && localPlayerId && location.protocol !== 'file:') {
+    try {
+      await fetch('/api/rooms/' + activeRoomId + '/flick', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId: localPlayerId, stickIndex: -1, fx: 0, fy: 0, leverage: 0, axisOff: 0 })
+      });
+    } catch (err) {}
   }
-  lastStateSentAt = millis();
-  publishGameEvent('state', { sticks: serializeSticks(), eliminatedPlayerIds: classicPlayers.filter(p => p.eliminated).map(p => p.id) });
 }
 
-async function publishGameEvent(type, payload) {
-  if (!activeRoomId || !localPlayerId || location.protocol === 'file:') return;
-  try {
-    await fetch('/api/rooms/' + activeRoomId + '/game-event', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playerId: localPlayerId, type, payload })
-    });
-  } catch (err) {}
-}
-
-function handleRemoteGameEvent(msg) {
-  if (!msg || msg.playerId === localPlayerId || gameState !== 'play') return;
-  isLocalMotionAuthority = false;
-  let payload = msg.payload || {};
-  if (payload.sticks) applySticksState(payload.sticks);
-  if (msg.type === 'drag-start' || msg.type === 'drag-move') {
-    remoteDrag = {
-      playerId: msg.playerId,
-      stickIndex: payload.stickIndex,
-      x: payload.x,
-      y: payload.y,
-      pullX: payload.pullX || 0,
-      pullY: payload.pullY || 0
-    };
+// ── SERVER STATE APPLICATION ──────────────────────────────────────────────────
+function applyServerState(serverSticks) {
+  if (!serverSticks || !serverSticks.length) return;
+  if (sticks.length !== serverSticks.length) {
+    sticks = serverSticks.map(sd => createClientStick(sd));
+  } else {
+    serverSticks.forEach((sd, i) => updateClientStick(sticks[i], sd));
   }
-  if (msg.type === 'drag-end' || msg.type === 'drag-clear') remoteDrag = null;
-}
-
-function serializeSticks() {
-  return sticks.map(s => ({
-    x: s.pos.x,
-    y: s.pos.y,
-    vx: s.vel.x,
-    vy: s.vel.y,
-    angle: s.angle,
-    angVel: s.angVel,
-    gone: s.gone,
-    fallT: s.fallT,
-    fallX: s.fallDir ? s.fallDir.x : 0,
-    fallY: s.fallDir ? s.fallDir.y : 1,
-    rollPhase: s.rollPhase,
-    rollVel: s.rollVel
-  }));
-}
-
-function applySticksState(state) {
-  if (!Array.isArray(state) || !sticks.length) return;
-  state.forEach((data, i) => {
-    let s = sticks[i];
-    if (!s || !data) return;
-    s.pos.x = Number(data.x) || s.pos.x;
-    s.pos.y = Number(data.y) || s.pos.y;
-    s.vel.x = Number(data.vx) || 0;
-    s.vel.y = Number(data.vy) || 0;
-    s.angle = Number(data.angle) || 0;
-    s.angVel = Number(data.angVel) || 0;
-    s.gone = !!data.gone;
-    s.fallT = Number(data.fallT) || 0;
-    s.fallDir = createVector(Number(data.fallX) || 0, Number(data.fallY) || 1);
-    s.rollPhase = Number(data.rollPhase) || s.rollPhase;
-    s.rollVel = Number(data.rollVel) || 0;
-    s.calcEnds();
-  });
+  // Sync eliminated flags onto classicPlayers
+  if (gameMode === 'classic' && roomState && roomState.eliminatedPlayerIds) {
+    classicPlayers.forEach(p => {
+      p.eliminated = roomState.eliminatedPlayerIds.includes(p.id);
+    });
+  }
   updateHUD();
+}
+
+function createClientStick(sd) {
+  let classicPlayer = (sd.classicPlayerIdx >= 0 && classicPlayers[sd.classicPlayerIdx])
+    ? classicPlayers[sd.classicPlayerIdx] : null;
+  // Map server penType → client penIndex (PEN_FILES order: [3,4,5,2])
+  let penIndex = sd.penType === 4 ? 1 : sd.penType === 5 ? 2 : sd.penType === 2 ? 3 : 0;
+  let sp = refToScreen(sd.x, sd.y);
+  let s = new Stick(sp.x, sp.y, sd.angle, sd.team, penIndex, classicPlayer);
+  updateClientStick(s, sd);
+  return s;
+}
+
+function updateClientStick(s, sd) {
+  let sp = refToScreen(sd.x, sd.y);
+  s.pos.x = sp.x; s.pos.y = sp.y;
+  s.vel.x = (sd.vx || 0) * scale;
+  s.vel.y = (sd.vy || 0) * scale;
+  s.angle    = sd.angle    || 0;
+  s.angVel   = sd.angVel   || 0;
+  s.rollPhase = sd.rollPhase || s.rollPhase;
+  s.rollVel  = sd.rollVel  || 0;
+  s.gone     = !!sd.gone;
+  s.fallT    = sd.fallT    || 0;
+  s.fallDir  = createVector(sd.fallDirX || 0, sd.fallDirY || 1);
+  s.calcEnds();
 }
 
 // ── SOUND ─────────────────────────────────────────────────────────────────────
@@ -1723,9 +1622,10 @@ class Stick {
   }
 
   calcEnds() {
+    let hl = HALF_LEN * scale;
     let ca = cos(this.angle), sa = sin(this.angle);
-    this.ax = this.pos.x + ca * HALF_LEN; this.ay = this.pos.y + sa * HALF_LEN;
-    this.bx = this.pos.x - ca * HALF_LEN; this.by = this.pos.y - sa * HALF_LEN;
+    this.ax = this.pos.x + ca * hl; this.ay = this.pos.y + sa * hl;
+    this.bx = this.pos.x - ca * hl; this.by = this.pos.y - sa * hl;
   }
 
   kick(force, leverage, axisOff) {
@@ -1737,79 +1637,27 @@ class Stick {
     this.rollVel += axisOff * force.mag() * 0.018 / this.stats.mass;
   }
 
-  update() {
-    this.pos.add(this.vel);
-    this.vel.mult(this.stats.friction);
-    this.angle  += this.angVel;
-    this.angVel *= this.stats.friction;
-    this.rollPhase += this.rollVel;
-    this.rollVel *= 0.9;
-
-    if (this.gone) {
-      this.fallT = min(1, this.fallT + 0.04);
-      this.pos.add(p5.Vector.mult(this.fallDir, 1.5 + this.fallT * 2.2));
-      this.vel.mult(0.92);
-      this.angVel += 0.003;
-    }
-
-    this.calcEnds();
-
-    if (!this.gone) {
+  updateTrail() {
+    // Trail is client-side only for visual smoothness
+    if (!this.gone && this.vel.mag() > 2) {
       this.trail.push(this.pos.copy());
       if (this.trail.length > 9) this.trail.shift();
-      this.checkBoundary();
-    }
-  }
-
-  checkBoundary() {
-    let outside = 0, total = 9;
-    for (let t = 0; t < total; t++) {
-      let tt = t / (total - 1);
-      let px = lerp(this.ax, this.bx, tt);
-      let py = lerp(this.ay, this.by, tt);
-      if (px < platX || px > platX+platW || py < platY || py > platY+platH)
-        outside++;
-    }
-
-    if (outside > total / 2) {
-      this.gone = true;
-      this.fallT = 0;
-      this.fallDir = createVector(
-        this.pos.x - (platX + platW/2),
-        this.pos.y - (platY + platH/2)
-      );
-      if (this.fallDir.mag() < 1) this.fallDir = createVector(0, 1);
-      this.fallDir.normalize();
-      if (gameMode === 'battle') {
-        scores[this.team]++;
-      } else {
-        let player = classicPlayers.find(p => p.team === this.team);
-        if (player && sticks.filter(s => s.team === this.team && !s.gone).length === 0) {
-          player.eliminated = true;
-        }
-      }
-      updateHUD();
-      return;
-    }
-
-    // Soft wall bounce when fully inside
-    if (outside === 0) {
-      let m = 6;
-      if (this.pos.x < platX+m)       { this.pos.x = platX+m;       this.vel.x *= -0.4; }
-      if (this.pos.x > platX+platW-m) { this.pos.x = platX+platW-m; this.vel.x *= -0.4; }
-      if (this.pos.y < platY+m)       { this.pos.y = platY+m;        this.vel.y *= -0.4; }
-      if (this.pos.y > platY+platH-m) { this.pos.y = platY+platH-m; this.vel.y *= -0.4; }
+    } else if (this.gone || this.vel.mag() <= 0.5) {
+      if (this.trail.length) this.trail.shift();
     }
   }
 
   show() {
     if (this.gone && this.fallT >= 1) return;
+    let sc        = scale;
+    let hl        = HALF_LEN * sc, hw = HALF_W * sc;
+    let pw        = PEN_DRAW_W * sc, ph = PEN_DRAW_H * sc;
     let spd       = this.vel.mag();
     let fallScale = this.gone ? max(0.04, 1 - this.fallT * 0.96) : 1;
     let fallAlpha = this.gone ? max(0, 255 * (1 - this.fallT))   : 255;
     let rollAmount = constrain(abs(this.rollVel) * 5, 0, 0.32);
     let rollSquash = 1 - rollAmount * (0.45 + 0.55 * abs(sin(this.rollPhase)));
-    let rollLift   = sin(this.rollPhase) * rollAmount * 4;
+    let rollLift   = sin(this.rollPhase) * rollAmount * 4 * sc;
 
     // Motion trail
     if (!this.gone && spd > 2) {
@@ -1820,13 +1668,13 @@ class Stick {
         rotate(this.angle); rectMode(CENTER); noStroke();
         let c = color(this.col);
         fill(red(c), green(c), blue(c), alpha);
-        rect(0, 0, HALF_LEN*2, HALF_W*2, HALF_W);
+        rect(0, 0, hl*2, hw*2, hw);
         pop();
       }
     }
 
     let isActive   = !this.gone && this.team === currentTurn && !selected;
-    let isSelected = selected === this || (remoteDrag && sticks[remoteDrag.stickIndex] === this);
+    let isSelected = selected === this;
 
     push();
     translate(this.pos.x, this.pos.y);
@@ -1839,16 +1687,16 @@ class Stick {
 
     // Shadow
     noStroke(); fill(0, 0, 0, 28 * (fallAlpha / 255));
-    rect(4, 6, PEN_DRAW_W * 0.95, PEN_DRAW_H * 0.55, PEN_DRAW_H * 0.28);
+    rect(4*sc, 6*sc, pw * 0.95, ph * 0.55, ph * 0.28);
 
     tint(255, fallAlpha);
     if (this.penImg) {
-      image(this.penImg, 0, 0, PEN_DRAW_W, PEN_DRAW_H);
+      image(this.penImg, 0, 0, pw, ph);
     } else {
       let c = color(this.col);
       fill(red(c), green(c), blue(c), fallAlpha);
       noStroke();
-      rect(0, 0, HALF_LEN*2, HALF_W*2, HALF_W);
+      rect(0, 0, hl*2, hw*2, hw);
     }
     noTint();
     pop();
@@ -1860,7 +1708,7 @@ class Stick {
       rotate(this.angle); rectMode(CENTER); noFill();
       stroke(255, 255, 255, isSelected ? 220 : 110);
       strokeWeight(isSelected ? 2.5 : 1.5);
-      rect(0, 0, HALF_LEN*2+12, HALF_W*2+10, HALF_W+4);
+      rect(0, 0, hl*2+12*sc, hw*2+10*sc, hw+4*sc);
       pop();
     }
 
@@ -1870,140 +1718,26 @@ class Stick {
       translate(this.pos.x, this.pos.y);
       rotate(this.angle); rectMode(CENTER);
       noStroke(); fill(32, 32, 32, 55);
-      rect(0, 0, HALF_LEN*2+8, HALF_W*2+8, HALF_W+3);
+      rect(0, 0, hl*2+8*sc, hw*2+8*sc, hw+3*sc);
       pop();
     }
   }
 
   hit(mx, my) {
+    let hl = HALF_LEN * scale, hw = HALF_W * scale;
     let dx = mx - this.pos.x, dy = my - this.pos.y;
     let ca = cos(-this.angle), sa = sin(-this.angle);
     let lx = dx*ca - dy*sa, ly = dx*sa + dy*ca;
-    return abs(lx) < HALF_LEN+16 && abs(ly) < HALF_W+10;
-  }
-
-  resolve(other) {
-    if (this.gone || other.gone) return;
-
-    let res  = closestSegSeg(this.ax, this.ay, this.bx, this.by,
-                              other.ax, other.ay, other.bx, other.by);
-    // Use a larger minimum distance and stronger restitution to prevent phasing
-    let minD = HALF_W * 2 + 4;
-    if (res.d >= minD) return;
-
-    let invA   = 1 / this.stats.mass;
-    let invB   = 1 / other.stats.mass;
-    let invSum = invA + invB;
-
-    // Positional correction — push apart proportional to overlap, with a
-    // slop tolerance to avoid jitter, but large enough to prevent tunneling
-    let overlap = minD - res.d;
-    let slop    = 0.5;
-    let corr    = max(overlap - slop, 0) / invSum * 1.0; // full correction
-
-    this.pos.x  += res.nx * corr * invA;
-    this.pos.y  += res.ny * corr * invA;
-    other.pos.x -= res.nx * corr * invB;
-    other.pos.y -= res.ny * corr * invB;
-
-    // Recalculate ends after positional push
-    this.calcEnds();
-    other.calcEnds();
-
-    // Velocity impulse — only if approaching
-    let rvx = this.vel.x - other.vel.x;
-    let rvy = this.vel.y - other.vel.y;
-    let dot = rvx * res.nx + rvy * res.ny;
-
-    if (dot < 0) {
-      let restitution = 0.55; // bounciness — higher than before for cleaner separations
-      let impulse = (-(1 + restitution) * dot) / invSum;
-      playHitSound(abs(dot));
-
-      this.vel.x  += impulse * invA * res.nx;
-      this.vel.y  += impulse * invA * res.ny;
-      other.vel.x -= impulse * invB * res.nx;
-      other.vel.y -= impulse * invB * res.ny;
-
-      // Angular response
-      this.angVel  += dot * 0.008 * invA;
-      other.angVel -= dot * 0.008 * invB;
-      this.angVel  += (res.s - 0.5) * abs(dot) * 0.028 * invA;
-      other.angVel -= (res.t - 0.5) * abs(dot) * 0.028 * invB;
-      this.rollVel += (res.s - 0.5) * abs(dot) * 0.035;
-      other.rollVel -= (res.t - 0.5) * abs(dot) * 0.035;
-    }
-
-    this.calcEnds();
-    other.calcEnds();
-  }
-
-  resolveObstacle(obstacle) {
-    if (this.gone) return;
-    let dx = this.bx - this.ax, dy = this.by - this.ay, l2 = dx*dx + dy*dy;
-    if (l2 === 0) return;
-    let t  = constrain(((obstacle.x - this.ax)*dx + (obstacle.y - this.ay)*dy) / l2, 0, 1);
-    let px = this.ax + t*dx, py = this.ay + t*dy;
-    let nx = px - obstacle.x, ny = py - obstacle.y;
-    let d  = sqrt(nx*nx + ny*ny);
-    let minD = obstacle.radius + HALF_W * 2;
-
-    if (d < minD) {
-      if (d < 0.001) {
-        nx = cos(this.angle + HALF_PI); ny = sin(this.angle + HALF_PI); d = 1;
-      } else { nx /= d; ny /= d; }
-
-      // Full positional correction for obstacles too
-      let push = minD - d;
-      this.pos.x += nx * push;
-      this.pos.y += ny * push;
-
-      let into = this.vel.x*nx + this.vel.y*ny;
-      if (into < 0) {
-        let restitution = 0.55;
-        this.vel.x -= (1 + restitution) * into * nx;
-        this.vel.y -= (1 + restitution) * into * ny;
-        this.angVel += into * 0.012 * (t - 0.5);
-        this.rollVel += (t - 0.5) * abs(into) * 0.04;
-        playHitSound(abs(into) * 1.4);
-      }
-      this.calcEnds();
-    }
+    return abs(lx) < hl+16*scale && abs(ly) < hw+10*scale;
   }
 }
 
-// ── GEOMETRY ──────────────────────────────────────────────────────────────────
-function segsTooClose(ax,ay,bx,by,cx,cy,dx,dy,thresh) {
-  for (let t = 0; t <= 1; t += 0.1)
-    if (ptSegDist(lerp(ax,bx,t), lerp(ay,by,t), cx,cy,dx,dy) < thresh) return true;
-  return false;
-}
+// ── GEOMETRY (client-side, used for obstacle placement) ───────────────────────
 function ptSegDist(px,py,ax,ay,bx,by) {
   let dx=bx-ax, dy=by-ay, l2=dx*dx+dy*dy;
   if (l2===0) return dist(px,py,ax,ay);
   let t = constrain(((px-ax)*dx+(py-ay)*dy)/l2, 0, 1);
   return dist(px,py, ax+t*dx, ay+t*dy);
-}
-function closestSegSeg(ax,ay,bx,by,cx,cy,dx,dy) {
-  let u={x:bx-ax,y:by-ay}, v={x:dx-cx,y:dy-cy}, w={x:ax-cx,y:ay-cy};
-  let a=u.x*u.x+u.y*u.y, e=v.x*v.x+v.y*v.y, f=v.x*w.x+v.y*w.y;
-  let s, t;
-  if (a<1e-6 && e<1e-6) { s=0; t=0; }
-  else if (a<1e-6)       { s=0; t=constrain(f/e,0,1); }
-  else {
-    let c=u.x*w.x+u.y*w.y;
-    if (e<1e-6) { t=0; s=constrain(-c/a,0,1); }
-    else {
-      let b2=u.x*v.x+u.y*v.y, denom=a*e-b2*b2;
-      s = denom!==0 ? constrain((b2*f-c*e)/denom,0,1) : 0;
-      t = constrain((b2*s+f)/e,0,1);
-      s = constrain((b2*t-c)/a,0,1);
-      t = constrain((b2*s+f)/e,0,1);
-    }
-  }
-  let p1={x:ax+s*u.x, y:ay+s*u.y}, p2={x:cx+t*v.x, y:cy+t*v.y};
-  let ddx=p1.x-p2.x, ddy=p1.y-p2.y, dd=sqrt(ddx*ddx+ddy*ddy);
-  return { d:dd, nx:dd>0?ddx/dd:1, ny:dd>0?ddy/dd:0, s, t };
 }
 
 // ── HUD & GAME FLOW ───────────────────────────────────────────────────────────
@@ -2066,33 +1800,6 @@ function pulseTurnBanner(colorValue, key) {
   banner.classList.add('turn-pulse');
 }
 
-function checkWin() {
-  if (frameCount - gameStartFrame < 10) return;
-  if (gameMode === 'battle') {
-    let blackLeft = sticks.filter(s => s.team==='black' && !s.gone).length;
-    let blueLeft  = sticks.filter(s => s.team==='blue'  && !s.gone).length;
-    if (blackLeft !== 0 && blueLeft !== 0) return;
-    pendingWinner = blackLeft===0 && blueLeft===0 ? 'DRAW'
-                  : blackLeft===0 ? 'BLUE' : 'BLACK';
-    pendingLeft   = { black: blackLeft, blue: blueLeft };
-    selected  = null;
-    dragStart = null;
-    gameState = 'ending';
-    return;
-  }
-
-  let alive = classicPlayers.filter(p => !p.eliminated);
-  if (alive.length <= 1) {
-    pendingWinner = alive.length === 1 ? alive[0].name : 'DRAW';
-    pendingLeft = {};
-    classicPlayers.forEach(p => {
-      pendingLeft[p.team] = sticks.filter(s => s.team === p.team && !s.gone).length;
-    });
-    selected  = null;
-    dragStart = null;
-    gameState = 'ending';
-  }
-}
 
 function checkPendingWin() {
   if (sticks.every(s => !s.gone || s.fallT >= 1))
@@ -2179,11 +1886,13 @@ async function resetGame() {
   initGame();
   if (activeRoomId && localPlayerId && location.protocol !== 'file:') {
     try {
-      await fetch('/api/rooms/' + activeRoomId + '/start', {
+      let res = await fetch('/api/rooms/' + activeRoomId + '/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ playerId: localPlayerId })
       });
+      let data = await res.json();
+      if (data.sticks && data.sticks.length) applyServerState(data.sticks);
     } catch (err) {}
   }
 }
