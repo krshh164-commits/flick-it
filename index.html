@@ -284,21 +284,32 @@
 
     /* Panels: slide-over overlay, narrower */
     #chatPanel {
-      width:min(230px,80vw);top:50px;bottom:0;
+      width:min(260px,82vw);top:50px;bottom:0;
       display:flex;flex-direction:column;
       padding-bottom:70px;
+      box-shadow:4px 0 24px rgba(0,0,0,0.55);
     }
     #chatMessages { flex:1;height:auto;min-height:0; }
-    #playerSidebar { width:min(198px,72vw);top:50px;bottom:0; }
+    #playerSidebar {
+      width:min(220px,72vw);top:50px;bottom:0;
+      box-shadow:-4px 0 24px rgba(0,0,0,0.55);
+    }
+
+    /* Panel backdrop — tapping it closes open panel */
+    #panelBackdrop {
+      display:none;position:fixed;inset:0;z-index:17;
+      background:rgba(0,0,0,0.42);
+    }
+    #panelBackdrop.active { display:block; }
+
+    /* Hide cube option on mobile (server doesn't handle cubes) */
+    #cubeOption { display:none !important; }
 
     /* Hide floating New Game on mobile — it lives inside the sidebar instead */
     #resetBtn { display:none !important; }
 
-    /* Canvas plat: account for no panels */
+    /* Canvas: no accidental scroll/zoom */
     canvas { touch-action:none; }
-
-    /* Reset/New Game btn */
-    #resetBtn { bottom:18px;right:10px;padding:7px 18px;font-size:12px; }
 
     /* Menu */
     #menu h1 { font-size:34px;letter-spacing:2px; }
@@ -335,9 +346,7 @@
     #winScreen p { font-size:14px; }
     #winScreen button { padding:10px 32px;font-size:14px; }
 
-    /* Cube option */
-    #cubeOption { top:58px;right:8px;font-size:11px;padding:5px 8px; }
-    body.classic-game #cubeOption { right:8px; }
+    /* cubeOption hidden entirely on mobile via rule above */
   }
 </style>
 </head>
@@ -414,6 +423,7 @@
 </div>
 
 <div id="reactionLayer"></div>
+<div id="panelBackdrop" onclick="closeAllPanels()"></div>
 
 <button class="panel-fab" id="chatToggleBtn" onclick="toggleChatPanel()" title="Chat">💬</button>
 <button class="panel-fab" id="playersToggleBtn" onclick="togglePlayersPanel()" title="Players">☰</button>
@@ -2030,34 +2040,60 @@ async function publishRoomEvent(type, payload) {
 
 function isMobile() { return window.innerWidth <= 700; }
 
+function setPanelBackdrop(visible) {
+  let bd = document.getElementById('panelBackdrop');
+  if (bd) bd.classList.toggle('active', visible);
+}
+
+function closeChatPanel() {
+  let panel = document.getElementById('chatPanel');
+  let btn   = document.getElementById('chatToggleBtn');
+  if (panel) panel.classList.add('mobile-hidden');
+  if (btn)   { btn.classList.remove('panel-open'); btn.textContent = '💬'; }
+}
+
+function closePlayersPanel() {
+  let panel = document.getElementById('playerSidebar');
+  let btn   = document.getElementById('playersToggleBtn');
+  if (panel) panel.classList.add('mobile-hidden');
+  if (btn)   { btn.classList.remove('panel-open'); btn.textContent = '☰'; }
+}
+
+function closeAllPanels() {
+  closeChatPanel();
+  closePlayersPanel();
+  setPanelBackdrop(false);
+}
+
 function toggleChatPanel() {
+  if (!isMobile()) return;
   let panel = document.getElementById('chatPanel');
   let btn   = document.getElementById('chatToggleBtn');
   if (!panel || !btn) return;
+  let willOpen = panel.classList.contains('mobile-hidden');
+  if (willOpen) closePlayersPanel(); // only one panel at a time
   let hidden = panel.classList.toggle('mobile-hidden');
   btn.classList.toggle('panel-open', !hidden);
   btn.textContent = hidden ? '💬' : '✕';
+  setPanelBackdrop(!hidden);
 }
 
 function togglePlayersPanel() {
+  if (!isMobile()) return;
   let panel = document.getElementById('playerSidebar');
   let btn   = document.getElementById('playersToggleBtn');
   if (!panel || !btn) return;
+  let willOpen = panel.classList.contains('mobile-hidden');
+  if (willOpen) closeChatPanel(); // only one panel at a time
   let hidden = panel.classList.toggle('mobile-hidden');
   btn.classList.toggle('panel-open', !hidden);
   btn.textContent = hidden ? '☰' : '✕';
+  setPanelBackdrop(!hidden);
 }
 
 function initMobilePanels() {
   if (!isMobile()) return;
-  let chat    = document.getElementById('chatPanel');
-  let sidebar = document.getElementById('playerSidebar');
-  let chatBtn = document.getElementById('chatToggleBtn');
-  let plrBtn  = document.getElementById('playersToggleBtn');
-  if (chat)    { chat.classList.add('mobile-hidden'); }
-  if (sidebar) { sidebar.classList.add('mobile-hidden'); }
-  if (chatBtn) { chatBtn.textContent = '💬'; chatBtn.classList.remove('panel-open'); }
-  if (plrBtn)  { plrBtn.textContent  = '☰';  plrBtn.classList.remove('panel-open'); }
+  closeAllPanels();
 }
 
 function buildPlayerList() {
