@@ -250,6 +250,46 @@
   #winScreen button { padding:12px 44px;font-size:16px;font-weight:800; }
   #winScreen button:hover { transform:scale(1.06);background:#d04435; }
 
+  /* ── LANDSCAPE LOCK OVERLAY ────────────────────────────────────────────── */
+  #landscapeOverlay {
+    display:none;position:fixed;inset:0;z-index:9999;
+    background:rgba(0,0,0,0.97);pointer-events:all;
+    flex-direction:column;align-items:center;justify-content:center;
+    color:#eee;text-align:center;gap:20px;
+  }
+  #landscapeOverlay .rot-icon {
+    font-size:72px;
+    animation:rotHint 1.8s ease-in-out infinite;
+    display:block;
+  }
+  @keyframes rotHint {
+    0%,100% { transform:rotate(0deg); }
+    50%      { transform:rotate(-90deg); }
+  }
+  #landscapeOverlay p { font-size:16px;color:#aaa;line-height:1.8;letter-spacing:1px; }
+  @media screen and (orientation:portrait) and (max-width:900px) {
+    #landscapeOverlay { display:flex; }
+  }
+
+  /* ── LEAVE GAME BUTTON (inside sidebar) ────────────────────────────────── */
+  #leaveGameBtn {
+    display:none;width:100%;margin-top:10px;padding:9px 0;font-size:12px;
+    font-weight:800;border-radius:50px;border:none;letter-spacing:1px;
+    background:rgba(100,28,18,0.72);color:#e88;cursor:pointer;
+    transition:background 0.15s,color 0.15s;font-family:'Noto Sans',sans-serif;
+  }
+  #leaveGameBtn:hover { background:#c0392b;color:#fff; }
+
+  /* ── LEAVE GAME BUTTON (desktop, fixed corner) ──────────────────────────── */
+  #leaveGameDesktop {
+    position:fixed;bottom:18px;left:24px;padding:8px 22px;
+    font-size:12px;font-weight:800;letter-spacing:1px;border-radius:50px;
+    border:none;background:rgba(50,18,12,0.85);color:#d07070;
+    cursor:pointer;display:none;z-index:20;pointer-events:all;
+    transition:background 0.15s,color 0.15s;font-family:'Noto Sans',sans-serif;
+  }
+  #leaveGameDesktop:hover { background:#c0392b;color:#fff; }
+
   /* ── MOBILE OVERLAY TOGGLE BUTTONS ─────────────────────────────────────── */
   .panel-fab {
     display:none;position:fixed;z-index:26;
@@ -263,7 +303,7 @@
     pointer-events:all;
   }
   .panel-fab.panel-open { background:rgba(192,57,43,0.82);border-color:#c0392b; }
-  #chatToggleBtn  { bottom:18px;left:10px; }
+  #chatToggleBtn    { bottom:18px;left:10px; }
   #playersToggleBtn { top:70px;right:10px; }
 
   /* ── MOBILE RESPONSIVE ─────────────────────────────────────────────────── */
@@ -282,18 +322,26 @@
     #turnText { font-size:10px;letter-spacing:0; }
     #turnTimer { font-size:10px;padding:1px 4px; }
 
-    /* Panels: slide-over overlay, narrower */
+    /* Panels: slide-over overlay, narrower, flex column */
     #chatPanel {
       width:min(260px,82vw);top:50px;bottom:0;
       display:flex;flex-direction:column;
-      padding-bottom:70px;
+      padding:12px 10px 76px;          /* bottom pad clears the chat FAB */
       box-shadow:4px 0 24px rgba(0,0,0,0.55);
     }
-    #chatMessages { flex:1;height:auto;min-height:0; }
+    /* Messages fill space; input stays at bottom */
+    #chatMessages { flex:1;height:auto;min-height:0;overflow-y:auto; }
+    #emojiBar     { flex-shrink:0;margin:8px 0 6px; }
+    #chatInputRow { flex-shrink:0; }
+
     #playerSidebar {
-      width:min(220px,72vw);top:50px;bottom:0;
+      width:min(220px,72vw);top:50px;bottom:0;overflow-y:auto;
+      display:flex;flex-direction:column;
+      padding:14px 10px 14px;
       box-shadow:-4px 0 24px rgba(0,0,0,0.55);
     }
+    /* Push leave button to very bottom of sidebar */
+    #playerSidebar #leaveGameBtn { margin-top:auto;display:block; }
 
     /* Panel backdrop — tapping it closes open panel */
     #panelBackdrop {
@@ -305,8 +353,9 @@
     /* Hide cube option on mobile (server doesn't handle cubes) */
     #cubeOption { display:none !important; }
 
-    /* Hide floating New Game on mobile — it lives inside the sidebar instead */
+    /* Hide floating New Game + desktop leave on mobile */
     #resetBtn { display:none !important; }
+    #leaveGameDesktop { display:none !important; }
 
     /* Canvas: no accidental scroll/zoom */
     canvas { touch-action:none; }
@@ -345,8 +394,6 @@
     #winScreen h2 { font-size:30px; }
     #winScreen p { font-size:14px; }
     #winScreen button { padding:10px 32px;font-size:14px; }
-
-    /* cubeOption hidden entirely on mobile via rule above */
   }
 </style>
 </head>
@@ -396,6 +443,7 @@
 </div>
 
 <button id="resetBtn" onclick="resetGame()">New Game</button>
+<button id="leaveGameDesktop" onclick="leaveGame()">⬅ Leave Game</button>
 
 <label id="cubeOption">
   <input id="cubeToggle" type="checkbox" onchange="toggleCubes()">
@@ -406,6 +454,7 @@
   <h3>Players</h3>
   <div id="playerList"></div>
   <button id="sidebarNewGameBtn" onclick="resetGame()" style="display:none;width:100%;margin-top:14px;padding:9px 0;font-size:13px;font-weight:800;border-radius:50px;border:none;background:#c0392b;color:#fff;cursor:pointer;letter-spacing:1px;box-shadow:0 4px 14px rgba(192,57,43,0.4);">New Game</button>
+  <button id="leaveGameBtn" onclick="leaveGame()">⬅ Leave Game</button>
 </div>
 
 <div id="chatPanel">
@@ -432,6 +481,12 @@
   <h2 id="winTitle">BLACK WINS!</h2>
   <p  id="winMsg">Black: 5 — Blue: 5</p>
   <button onclick="resetGame()">Play Again</button>
+</div>
+
+<!-- Rotate to landscape prompt (portrait mobile only) -->
+<div id="landscapeOverlay">
+  <span class="rot-icon">📱</span>
+  <p>Rotate your device to<br><strong>landscape</strong> to play</p>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
@@ -728,6 +783,7 @@ function showLobbyChoice() {
   playersList = [];
   isHost = false;
   pendingJoinCode = '';
+  showLeaveBtn(false);
   document.body.classList.add('lobby-open');
   document.getElementById('classicSetup').style.display = 'flex';
   renderClassicSetup();
@@ -1863,6 +1919,7 @@ function startBattleGame() {
   if (isMobile()) document.getElementById('sidebarNewGameBtn').style.display = 'block';
   gameState = 'play';
   updateBattleScoreNames();
+  showLeaveBtn(true);
   initMobilePanels();
   initGame();
 }
@@ -1897,6 +1954,7 @@ function startClassicGame(fromRoom = false) {
   document.getElementById('resetBtn').style.display = 'block';
   if (isMobile()) document.getElementById('sidebarNewGameBtn').style.display = 'block';
   gameState = 'play';
+  showLeaveBtn(true);
   initMobilePanels();
   initGame();
 }
@@ -2085,6 +2143,7 @@ function toggleChatPanel() {
   let willOpen = panel.classList.contains('mobile-hidden');
   if (willOpen) closePlayersPanel(); // only one panel at a time
   let hidden = panel.classList.toggle('mobile-hidden');
+  if (!hidden) panel.style.display = 'flex'; // ensure flex layout when open
   btn.classList.toggle('panel-open', !hidden);
   btn.textContent = hidden ? '💬' : '✕';
   setPanelBackdrop(!hidden);
@@ -2098,6 +2157,7 @@ function togglePlayersPanel() {
   let willOpen = panel.classList.contains('mobile-hidden');
   if (willOpen) closeChatPanel(); // only one panel at a time
   let hidden = panel.classList.toggle('mobile-hidden');
+  if (!hidden) panel.style.display = 'flex'; // ensure flex layout when open
   btn.classList.toggle('panel-open', !hidden);
   btn.textContent = hidden ? '☰' : '✕';
   setPanelBackdrop(!hidden);
@@ -2105,7 +2165,24 @@ function togglePlayersPanel() {
 
 function initMobilePanels() {
   if (!isMobile()) return;
+  // Clear inline display overrides so CSS media-query flex takes effect when opened
+  let chat    = document.getElementById('chatPanel');
+  let sidebar = document.getElementById('playerSidebar');
+  if (chat)    chat.style.display    = '';
+  if (sidebar) sidebar.style.display = '';
   closeAllPanels();
+}
+
+function leaveGame() {
+  closeAllPanels();
+  leaveRoom(); // calls /leave API, closes SSE, returns to lobby
+}
+
+function showLeaveBtn(visible) {
+  let mob  = document.getElementById('leaveGameBtn');
+  let desk = document.getElementById('leaveGameDesktop');
+  // mobile leave btn is always visible in sidebar via CSS; desktop btn toggled
+  if (desk) desk.style.display = visible && !isMobile() ? 'block' : '';
 }
 
 function buildPlayerList() {
