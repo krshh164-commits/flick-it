@@ -254,18 +254,19 @@
   #winScreen button:hover { transform:scale(1.06);background:#d04435; }
 
   /* ── AUTO LANDSCAPE on narrow portrait phones (< 500 px wide) ─────────────
-     Rotates html 90° CW so landscape content fills the portrait viewport.
-     Canvas is created with swapped dims in JS so p5 renders at correct size. */
+     Element starts at (0,0) with landscape dims, then translate+rotate maps
+     it exactly onto the portrait viewport. No off-screen pre-transform pos.
+     Verified: all 4 corners → portrait corners. Canvas dims swapped in JS. */
   @media screen and (orientation:portrait) and (max-width:499px) {
     html {
       position: fixed;
-      left: 100vh;          /* slide right by viewport height           */
+      left: 0;
       top: 0;
-      width: 100vh;         /* landscape width  = portrait height       */
-      height: 100vw;        /* landscape height = portrait width        */
+      width: 100vh;         /* landscape width  = portrait height */
+      height: 100vw;        /* landscape height = portrait width  */
       overflow: hidden;
-      transform: rotate(90deg);
-      transform-origin: 0 100vh; /* pivot at screen (100vh, 100vh)     */
+      transform-origin: 0 0;
+      transform: translate(0, 100vh) rotate(-90deg);
     }
   }
 
