@@ -250,25 +250,19 @@
   #winScreen button { padding:12px 44px;font-size:16px;font-weight:800; }
   #winScreen button:hover { transform:scale(1.06);background:#d04435; }
 
-  /* ── LANDSCAPE LOCK OVERLAY ────────────────────────────────────────────── */
-  #landscapeOverlay {
-    display:none;position:fixed;inset:0;z-index:9999;
-    background:rgba(0,0,0,0.97);pointer-events:all;
-    flex-direction:column;align-items:center;justify-content:center;
-    color:#eee;text-align:center;gap:20px;
-  }
-  #landscapeOverlay .rot-icon {
-    font-size:72px;
-    animation:rotHint 1.8s ease-in-out infinite;
-    display:block;
-  }
-  @keyframes rotHint {
-    0%,100% { transform:rotate(0deg); }
-    50%      { transform:rotate(-90deg); }
-  }
-  #landscapeOverlay p { font-size:16px;color:#aaa;line-height:1.8;letter-spacing:1px; }
+  /* ── AUTO LANDSCAPE (portrait phones) ──────────────────────────────────── */
+  /* Rotate the whole page 90° so it always appears in landscape on phones.  */
   @media screen and (orientation:portrait) and (max-width:900px) {
-    #landscapeOverlay { display:flex; }
+    html {
+      position:fixed;
+      width:100vh;
+      height:100vw;
+      top:100%;
+      left:0;
+      transform:rotate(90deg);
+      transform-origin:left top;
+      overflow:hidden;
+    }
   }
 
   /* ── LEAVE GAME BUTTON (inside sidebar) ────────────────────────────────── */
@@ -483,15 +477,19 @@
   <button onclick="resetGame()">Play Again</button>
 </div>
 
-<!-- Rotate to landscape prompt (portrait mobile only) -->
-<div id="landscapeOverlay">
-  <span class="rot-icon">📱</span>
-  <p>Rotate your device to<br><strong>landscape</strong> to play</p>
-</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/addons/p5.sound.min.js"></script>
 <script>
+// ── ORIENTATION LOCK (Android Chrome / supported browsers) ───────────────────
+// CSS transform handles iOS; this API call locks it natively where supported.
+(function tryLockLandscape() {
+  try {
+    if (screen.orientation && typeof screen.orientation.lock === 'function') {
+      screen.orientation.lock('landscape').catch(function(){});
+    }
+  } catch(e) {}
+})();
 // ── CONFIG ────────────────────────────────────────────────────────────────────
 const HALF_LEN   = 100;
 const HALF_W     = 5;
