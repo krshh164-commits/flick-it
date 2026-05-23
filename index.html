@@ -250,20 +250,8 @@
   #winScreen button { padding:12px 44px;font-size:16px;font-weight:800; }
   #winScreen button:hover { transform:scale(1.06);background:#d04435; }
 
-  /* ── AUTO LANDSCAPE (portrait phones) ──────────────────────────────────── */
-  /* Rotate the whole page 90° so it always appears in landscape on phones.  */
-  @media screen and (orientation:portrait) and (max-width:900px) {
-    html {
-      position:fixed;
-      width:100vh;
-      height:100vw;
-      top:100%;
-      left:0;
-      transform:rotate(90deg);
-      transform-origin:left top;
-      overflow:hidden;
-    }
-  }
+  /* Orientation lock is handled via screen.orientation.lock() in JS.
+     CSS transform was removed — it broke p5.js canvas sizing.            */
 
   /* ── LEAVE GAME BUTTON (inside sidebar) ────────────────────────────────── */
   #leaveGameBtn {
@@ -665,6 +653,11 @@ function selectMode(mode) {
 }
 
 function handlePlay() {
+  // Request landscape lock after user gesture (Android Chrome honours this)
+  try {
+    if (screen.orientation && typeof screen.orientation.lock === 'function')
+      screen.orientation.lock('landscape').catch(function(){});
+  } catch(e) {}
   document.getElementById('menu').style.display = 'none';
   showLobbyChoice();
 }
@@ -2116,14 +2109,14 @@ function setPanelBackdrop(visible) {
 function closeChatPanel() {
   let panel = document.getElementById('chatPanel');
   let btn   = document.getElementById('chatToggleBtn');
-  if (panel) panel.classList.add('mobile-hidden');
+  if (panel) { panel.classList.add('mobile-hidden'); panel.style.display = 'none'; }
   if (btn)   { btn.classList.remove('panel-open'); btn.textContent = '💬'; }
 }
 
 function closePlayersPanel() {
   let panel = document.getElementById('playerSidebar');
   let btn   = document.getElementById('playersToggleBtn');
-  if (panel) panel.classList.add('mobile-hidden');
+  if (panel) { panel.classList.add('mobile-hidden'); panel.style.display = 'none'; }
   if (btn)   { btn.classList.remove('panel-open'); btn.textContent = '☰'; }
 }
 
@@ -2140,11 +2133,12 @@ function toggleChatPanel() {
   if (!panel || !btn) return;
   let willOpen = panel.classList.contains('mobile-hidden');
   if (willOpen) closePlayersPanel(); // only one panel at a time
-  let hidden = panel.classList.toggle('mobile-hidden');
-  if (!hidden) panel.style.display = 'flex'; // ensure flex layout when open
-  btn.classList.toggle('panel-open', !hidden);
-  btn.textContent = hidden ? '💬' : '✕';
-  setPanelBackdrop(!hidden);
+  panel.classList.toggle('mobile-hidden');
+  let isOpen = !panel.classList.contains('mobile-hidden');
+  panel.style.display = isOpen ? 'flex' : 'none';
+  btn.classList.toggle('panel-open', isOpen);
+  btn.textContent = isOpen ? '✕' : '💬';
+  setPanelBackdrop(isOpen);
 }
 
 function togglePlayersPanel() {
@@ -2154,21 +2148,27 @@ function togglePlayersPanel() {
   if (!panel || !btn) return;
   let willOpen = panel.classList.contains('mobile-hidden');
   if (willOpen) closeChatPanel(); // only one panel at a time
-  let hidden = panel.classList.toggle('mobile-hidden');
-  if (!hidden) panel.style.display = 'flex'; // ensure flex layout when open
-  btn.classList.toggle('panel-open', !hidden);
-  btn.textContent = hidden ? '☰' : '✕';
-  setPanelBackdrop(!hidden);
+  panel.classList.toggle('mobile-hidden');
+  let isOpen = !panel.classList.contains('mobile-hidden');
+  panel.style.display = isOpen ? 'flex' : 'none';
+  btn.classList.toggle('panel-open', isOpen);
+  btn.textContent = isOpen ? '✕' : '☰';
+  setPanelBackdrop(isOpen);
 }
 
 function initMobilePanels() {
   if (!isMobile()) return;
-  // Clear inline display overrides so CSS media-query flex takes effect when opened
+  // Force both panels hidden; inline style set to none so media-query flex doesn't leak
   let chat    = document.getElementById('chatPanel');
   let sidebar = document.getElementById('playerSidebar');
-  if (chat)    chat.style.display    = '';
-  if (sidebar) sidebar.style.display = '';
-  closeAllPanels();
+  if (chat)    { chat.style.display    = 'none'; chat.classList.add('mobile-hidden'); }
+  if (sidebar) { sidebar.style.display = 'none'; sidebar.classList.add('mobile-hidden'); }
+  // Reset FAB buttons
+  let cb = document.getElementById('chatToggleBtn');
+  let pb = document.getElementById('playersToggleBtn');
+  if (cb) { cb.classList.remove('panel-open'); cb.textContent = '💬'; }
+  if (pb) { pb.classList.remove('panel-open'); pb.textContent = '☰'; }
+  setPanelBackdrop(false);
 }
 
 function leaveGame() {
@@ -2179,8 +2179,8 @@ function leaveGame() {
 function showLeaveBtn(visible) {
   let mob  = document.getElementById('leaveGameBtn');
   let desk = document.getElementById('leaveGameDesktop');
-  // mobile leave btn is always visible in sidebar via CSS; desktop btn toggled
-  if (desk) desk.style.display = visible && !isMobile() ? 'block' : '';
+  if (mob)  mob.style.display  = visible ? 'block' : 'none';
+  if (desk) desk.style.display = visible && !isMobile() ? 'block' : 'none';
 }
 
 function buildPlayerList() {
