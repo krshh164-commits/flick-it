@@ -93,7 +93,8 @@
     color:#eee;font-size:10px;letter-spacing:1px;padding:3px 6px;border-radius:999px;
     background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.12);
   }
-  .lobby-choice { display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px; }
+  .lobby-choice { display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px;justify-items:center; }
+  .lobby-choice button { width:100%;text-align:center; }
   #classicSetup .setup-actions { display:flex;gap:12px;margin-top:18px;align-items:center;justify-content:center;flex-wrap:wrap; }
   #classicSetup button { padding:10px 24px;font-size:14px;font-weight:800;box-shadow:0 4px 16px rgba(192,57,43,0.35); }
   #classicSetup .soft-btn { background:rgba(255,255,255,0.09);box-shadow:none;color:#ddd; }
@@ -173,8 +174,10 @@
   #playerSidebar {
     position:fixed;right:0;top:64px;bottom:0;width:198px;display:none;
     background:rgba(0,0,0,0.55);border-left:1px solid rgba(255,255,255,0.08);
-    padding:14px 10px;z-index:18;overflow:auto;
+    padding:14px 10px;z-index:18;overflow:hidden;
+    flex-direction:column; /* display set to flex by JS when shown */
   }
+  #playerList { flex:1;overflow-y:auto; }
   #playerSidebar h3 {
     color:#888;font-size:11px;letter-spacing:2px;text-align:center;
     text-transform:uppercase;margin-bottom:12px;
@@ -250,12 +253,25 @@
   #winScreen button { padding:12px 44px;font-size:16px;font-weight:800; }
   #winScreen button:hover { transform:scale(1.06);background:#d04435; }
 
-  /* Orientation lock is handled via screen.orientation.lock() in JS.
-     CSS transform was removed — it broke p5.js canvas sizing.            */
+  /* ── AUTO LANDSCAPE on narrow portrait phones (< 500 px wide) ─────────────
+     Rotates html 90° CW so landscape content fills the portrait viewport.
+     Canvas is created with swapped dims in JS so p5 renders at correct size. */
+  @media screen and (orientation:portrait) and (max-width:499px) {
+    html {
+      position: fixed;
+      left: 100vh;          /* slide right by viewport height           */
+      top: 0;
+      width: 100vh;         /* landscape width  = portrait height       */
+      height: 100vw;        /* landscape height = portrait width        */
+      overflow: hidden;
+      transform: rotate(90deg);
+      transform-origin: 0 100vh; /* pivot at screen (100vh, 100vh)     */
+    }
+  }
 
   /* ── LEAVE GAME BUTTON (inside sidebar) ────────────────────────────────── */
   #leaveGameBtn {
-    display:none;width:100%;margin-top:10px;padding:9px 0;font-size:12px;
+    display:none;width:100%;margin-top:auto;margin-bottom:6px;padding:9px 0;font-size:12px;
     font-weight:800;border-radius:50px;border:none;letter-spacing:1px;
     background:rgba(100,28,18,0.72);color:#e88;cursor:pointer;
     transition:background 0.15s,color 0.15s;font-family:'Noto Sans',sans-serif;
@@ -317,13 +333,11 @@
     #chatInputRow { flex-shrink:0; }
 
     #playerSidebar {
-      width:min(220px,72vw);top:50px;bottom:0;overflow-y:auto;
+      width:min(220px,72vw);top:50px;bottom:0;overflow:hidden;
       display:flex;flex-direction:column;
       padding:14px 10px 14px;
       box-shadow:-4px 0 24px rgba(0,0,0,0.55);
     }
-    /* Push leave button to very bottom of sidebar */
-    #playerSidebar #leaveGameBtn { margin-top:auto;display:block; }
 
     /* Panel backdrop — tapping it closes open panel */
     #panelBackdrop {
@@ -435,8 +449,8 @@
 <div id="playerSidebar">
   <h3>Players</h3>
   <div id="playerList"></div>
-  <button id="sidebarNewGameBtn" onclick="resetGame()" style="display:none;width:100%;margin-top:14px;padding:9px 0;font-size:13px;font-weight:800;border-radius:50px;border:none;background:#c0392b;color:#fff;cursor:pointer;letter-spacing:1px;box-shadow:0 4px 14px rgba(192,57,43,0.4);">New Game</button>
   <button id="leaveGameBtn" onclick="leaveGame()">⬅ Leave Game</button>
+  <button id="sidebarNewGameBtn" onclick="resetGame()" style="display:none;width:100%;padding:9px 0;font-size:13px;font-weight:800;border-radius:50px;border:none;background:#c0392b;color:#fff;cursor:pointer;letter-spacing:1px;box-shadow:0 4px 14px rgba(192,57,43,0.4);">New Game</button>
 </div>
 
 <div id="chatPanel">
@@ -597,6 +611,18 @@ function trimTransparentImage(img) {
 }
 
 // ── SETUP ─────────────────────────────────────────────────────────────────────
+// Returns true when phone is portrait + narrow enough to need CSS auto-rotation
+function phonePortrait() {
+  return window.innerWidth < 500 && window.innerHeight > window.innerWidth;
+}
+// Canvas width/height accounting for CSS landscape rotation on narrow phones
+function canvasW() { return phonePortrait() ? window.innerHeight : window.innerWidth; }
+function canvasH() { return phonePortrait() ? window.innerWidth  : window.innerHeight; }
+// Game-space mouse coords — remapped when CSS rotation is active
+// When portrait phone is rotated 90° CW: game_x = width-mouseY, game_y = mouseX
+function gX() { return phonePortrait() ? width - mouseY : mouseX; }
+function gY() { return phonePortrait() ? mouseX : mouseY; }
+
 function setup() {
   for (let team in penImgs) {
     penImgs[team] = penImgs[team].map(trimTransparentImage);
@@ -604,7 +630,7 @@ function setup() {
   for (let id in classicImgs) {
     classicImgs[id] = trimTransparentImage(classicImgs[id]);
   }
-  createCanvas(window.innerWidth, window.innerHeight);
+  createCanvas(canvasW(), canvasH());
   computePlat();
   renderClassicSetup();
   setupRoomChat();
@@ -612,12 +638,12 @@ function setup() {
 }
 
 function windowResized() {
-  resizeCanvas(window.innerWidth, window.innerHeight);
+  resizeCanvas(canvasW(), canvasH());
   computePlat();
 }
 
 function computePlat() {
-  let mob    = width <= 700;
+  let mob    = isMobile(); // use actual viewport width (consistent with CSS media queries)
   let hudH   = mob ? 50 : 64;
   let margin = mob ? 4  : 14;
   let availW = width  - margin * 2;
@@ -1264,7 +1290,7 @@ function initGame() {
   cubeToggle.checked = false;
   document.getElementById('cubeOption').style.display = firstMoveDone ? 'none' : 'flex';
   document.getElementById('winScreen').style.display   = 'none';
-  document.getElementById('playerSidebar').style.display = gameMode === 'classic' ? 'block' : 'none';
+  document.getElementById('playerSidebar').style.display = gameMode === 'classic' ? 'flex' : 'none';
   document.getElementById('chatPanel').style.display = 'block';
   updateHUD();
   if (activeRoomId && currentTurnStartedAt) {
@@ -1348,7 +1374,7 @@ function draw() {
   for (let s of falling)    s.show();
 
   if (gameState === 'play' && selected && dragStart) {
-    let pull = p5.Vector.sub(dragStart, createVector(mouseX, mouseY));
+    let pull = p5.Vector.sub(dragStart, createVector(gX(), gY()));
     if (pull.mag() > MAX_DRAG) pull.setMag(MAX_DRAG);
     if (pull.mag() > 6) drawArrow(dragStart, pull);
   }
@@ -1407,9 +1433,9 @@ function mousePressed() {
   if (!canLocalControlTurn()) return;
   for (let i = 0; i < sticks.length; i++) {
     let s = sticks[i];
-    if (!s.gone && s.team === currentTurn && s.hit(mouseX, mouseY)) {
+    if (!s.gone && s.team === currentTurn && s.hit(gX(), gY())) {
       selected  = s;
-      dragStart = createVector(mouseX, mouseY);
+      dragStart = createVector(gX(), gY());
       markTurnTouched();
       break;
     }
@@ -1432,7 +1458,7 @@ function canLocalControlTurn() {
 function mouseReleased() {
   if (gameState !== 'play' || !selected || !dragStart) return;
 
-  let pull = p5.Vector.sub(dragStart, createVector(mouseX, mouseY));
+  let pull = p5.Vector.sub(dragStart, createVector(gX(), gY()));
   if (pull.mag() > MAX_DRAG) pull.setMag(MAX_DRAG);
 
   if (pull.mag() > 8) {
@@ -1771,7 +1797,7 @@ class Stick {
     pop();
 
     // Hover / selected glow
-    if ((isActive && this.hit(mouseX, mouseY)) || isSelected) {
+    if ((isActive && this.hit(gX(), gY())) || isSelected) {
       push();
       translate(this.pos.x, this.pos.y);
       rotate(this.angle); rectMode(CENTER); noFill();
@@ -1940,7 +1966,7 @@ function startClassicGame(fromRoom = false) {
   document.getElementById('hud').style.justifyContent = 'center';
   document.getElementById('panelBlack').style.display = 'none';
   document.getElementById('panelBlue').style.display  = 'none';
-  document.getElementById('playerSidebar').style.display = 'block';
+  document.getElementById('playerSidebar').style.display = 'flex';
   document.getElementById('chatPanel').style.display = 'block';
   document.getElementById('resetBtn').style.display = 'block';
   if (isMobile()) document.getElementById('sidebarNewGameBtn').style.display = 'block';
